@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mining Game - Basic Working Version</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #222;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #444;
+            background: #000;
+        }
+        .controls {
+            margin-top: 10px;
+        }
+        .stats {
+            margin-top: 10px;
+            display: flex;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="controls">
+        <strong>Controls:</strong> A/D to move/drill left/right, W to thrust up, S to drill/move down, I for inventory
+    </div>
+    <div class="stats">
+        <div>Fuel: <span id="fuel">100</span></div>
+        <div>Hull: <span id="hull">100</span></div>
+        <div>Depth: <span id="depth">0</span>m</div>
+        <div>Ore: <span id="ore">0</span></div>
+    </div>
+
+    <script>
+        // console.log('Script starting...');
+        
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // console.log('Canvas:', canvas.width, 'x', canvas.height);
+        
+        // Simple config
+        const BLOCK_SIZE = 20;
+        const WORLD_WIDTH = 40;
+        const WORLD_HEIGHT = 100;
+        
+        // Game state
+        const game = {
+            player: {
+                x: 200,
+                y: 100,
+                vx: 0,
+                vy: 0,
+                width: 18,
+                height: 18,
+                fuel: 100,
+                hull: 100,
+                maxHull: 100,
+                ore: 0,
+                bronzeOre: 0,
+                silverOre: 0,
+                goldOre: 0,
+                platinumOre: 0,
+                maxInventory: 12,
+                onGround: false,
+                drilling: false,
+                drillProgress: 0,
+                drillDirection: ''
+            },
+            camera: {
+                y: 0
+            },
+            showInventory: false,
+            terrain: [],
+            keys: {},
+            lastTime: 0,
+            // Inventory buttons
+            fuelButton: null,
+            upgradeCargoButton: null,
+            upgradeHullButton: null,
+            bronzeConvertButton: null,
+            silverConvertButton: null,
+            goldConvertButton: null
+        };
+
+        // Create simple terrain
+        function generateTerrain() {
+            // console.log('Generating terrain...');
+            
+            game.terrain = [];
+            
+            for (let y = 0; y < WORLD_HEIGHT; y++) {
+                game.terrain[y] = [];
+                for (let x = 0; x < WORLD_WIDTH; x++) {
+                    if (y >= 10) {
+                        // Dirt with some ores
+                        let blockType = 'dirt';
+                        if (Math.random() < 0.1) {
+                            const oreRoll = Math.random();
+                            if (oreRoll < 0.01) blockType = 'platinum';
+                            else if (oreRoll < 0.03) blockType = 'gold';
+                            else if (oreRoll < 0.06) blockType = 'silver';
+                            else blockType = 'bronze';
+                        }
+                        game.terrain[y][x] = { type: blockType, exists: true };
+                    } else {
+                        // Air
+                        game.terrain[y][x] = { type: 'air', exists: false };
+                    }
+                }
+            }
+            
+            // console.log('Terrain generated successfully');
+            // console.log('First row of terrain:', game.terrain[0]);
+            // console.log('Tenth row of terrain:', game.terrain[10]);
+        }
+
+        // Input
+        document.addEventListener('keydown', (e) => {
+            game.keys[e.key.toLowerCase()] = true;
+            if (e.key.toLowerCase() === 'i') {
+                game.showInventory = !game.showInventory;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            game.keys[e.key.toLowerCase()] = false;
+        });
+
+        // Add click handler for inventory buttons
+        canvas.addEventListener('click', (e) => {
+            if (game.showInventory) {
+                const rect = canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+                
+                // Check all buttons
+                if (game.fuelButton && isPointInButton(clickX, clickY, game.fuelButton)) {
+                    craftFuel();
+                }
+                if (game.upgradeCargoButton && isPointInButton(clickX, clickY, game.upgradeCargoButton)) {
+                    upgradeInventory();
+                }
+                if (game.upgradeHullButton && isPointInButton(clickX, clickY, game.upgradeHullButton)) {
+                    upgradeHull();
+                }
+                if (game.bronzeConvertButton && isPointInButton(clickX, clickY, game.bronzeConvertButton)) {
+                    convertOre('bronze', 'silver');
+                }
+                if (game.silverConvertButton && isPointInButton(clickX, clickY, game.silverConvertButton)) {
+                    convertOre('silver', 'gold');
+                }
+                if (game.goldConvertButton && isPointInButton(clickX, clickY, game.goldConvertButton)) {
+                    convertOre('gold', 'platinum');
+                }
+            }
+        });
+
+        function isPointInButton(x, y, button) {
+            return x >= button.x && x <= button.x + button.width &&
+                   y >= button.y && y <= button.y + button.height;
+        }
+
+        // Inventory functions
+        function craftFuel() {
+            if (game.player.bronzeOre > 0) {
+                game.player.bronzeOre -= 1;
+                game.player.fuel = Math.min(100, game.player.fuel + 50);
+                updateOreCount();
+            }
+        }
+
+        function upgradeInventory() {
+            if (game.player.goldOre > 0) {
+                game.player.goldOre -= 1;
+                game.player.maxInventory += 1;
+                updateOreCount();
+            }
+        }
+
+        function upgradeHull() {
+            if (game.player.platinumOre > 0) {
+                game.player.platinumOre -= 1;
+                game.player.maxHull += 2
+                game.player.hull += 2;
+                updateOreCount();
+            }
+        }
+
+        function convertOre(fromType, toType) {
+            if (fromType === 'bronze' && game.player.bronzeOre >= 3) {
+                game.player.bronzeOre -= 3;
+                game.player.silverOre += 1;
+            } else if (fromType === 'silver' && game.player.silverOre >= 3) {
+                game.player.silverOre -= 3;
+                game.player.goldOre += 1;
+            } else if (fromType === 'gold' && game.player.goldOre >= 3) {
+                game.player.goldOre -= 3;
+                game.player.platinumOre += 1;
+            }
+            updateOreCount();
+        }
+
+        function updateOreCount() {
+            // Update total ore count for display
+            game.player.ore = game.player.bronzeOre + (game.player.silverOre * 3) + 
+                             (game.player.goldOre * 10) + (game.player.platinumOre * 30);
+        }
+
+        function getCurrentOreCount() {
+            return game.player.bronzeOre + game.player.silverOre + game.player.goldOre + game.player.platinumOre;
+        }
+
+        function renderInventory() {
+            // Semi-transparent overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const panelWidth = 600;
+            const panelHeight = 400;
+            const panelX = (canvas.width - panelWidth) / 2;
+            const panelY = (canvas.height - panelHeight) / 2;
+            
+            // Main panel
+            ctx.fillStyle = '#333';
+            ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
+            
+            // Title with capacity
+            const currentCount = getCurrentOreCount();
+            ctx.fillStyle = 'white';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`INVENTORY (${currentCount}/${game.player.maxInventory})`, canvas.width / 2, panelY + 30);
+            
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'left';
+            let yOffset = 60;
+            
+            // Reset button references
+            game.fuelButton = null;
+            game.upgradeCargoButton = null;
+            game.upgradeHullButton = null;
+            game.bronzeConvertButton = null;
+            game.silverConvertButton = null;
+            game.goldConvertButton = null;
+            
+            // Bronze ore row
+            ctx.fillStyle = '#CD7F32';
+            ctx.fillText(`Bronze Ore: ${game.player.bronzeOre}`, panelX + 20, panelY + yOffset);
+            
+            let buttonX = panelX + 200;
+            if (game.player.bronzeOre > 0) {
+                game.fuelButton = drawButton(buttonX, panelY + yOffset - 15, 100, 25, 'Make Fuel (+50)', '#006600');
+                buttonX += 110;
+            }
+            if (game.player.bronzeOre >= 3) {
+                game.bronzeConvertButton = drawButton(buttonX, panelY + yOffset - 15, 120, 25, 'Convert to Silver', '#004466');
+            }
+            
+            yOffset += 40;
+            
+            // Silver ore row
+            ctx.fillStyle = '#C0C0C0';
+            ctx.fillText(`Silver Ore: ${game.player.silverOre}`, panelX + 20, panelY + yOffset);
+            
+            if (game.player.silverOre >= 3) {
+                game.silverConvertButton = drawButton(panelX + 200, panelY + yOffset - 15, 120, 25, 'Convert to Gold', '#004466');
+            }
+            
+            yOffset += 40;
+            
+            // Gold ore row
+            ctx.fillStyle = '#FFD700';
+            ctx.fillText(`Gold Ore: ${game.player.goldOre}`, panelX + 20, panelY + yOffset);
+            
+            buttonX = panelX + 200;
+            if (game.player.goldOre > 0) {
+                game.upgradeCargoButton = drawButton(buttonX, panelY + yOffset - 15, 120, 25, 'Upgrade Cargo (+1)', '#006600');
+                buttonX += 130;
+            }
+            if (game.player.goldOre >= 3) {
+                game.goldConvertButton = drawButton(buttonX, panelY + yOffset - 15, 130, 25, 'Convert to Platinum', '#004466');
+            }
+            
+            yOffset += 40;
+            
+            // Platinum ore row
+            ctx.fillStyle = '#E5E4E2';
+            ctx.fillText(`Platinum Ore: ${game.player.platinumOre}`, panelX + 20, panelY + yOffset);
+            
+            if (game.player.platinumOre > 0) {
+                game.upgradeHullButton = drawButton(panelX + 200, panelY + yOffset - 15, 120, 25, 'Upgrade Hull (+2)', '#006600');
+            }
+            
+            yOffset += 80;
+            
+            // Instructions
+            ctx.fillStyle = '#AAA';
+            ctx.textAlign = 'center';
+            ctx.font = '14px Arial';
+            ctx.fillText('Convert 3 of any ore to 1 of the next tier • Press I to close', canvas.width / 2, panelY + panelHeight - 20);
+        }
+
+        function drawButton(x, y, width, height, text, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = color === '#006600' ? '#00AA00' : '#0066AA';
+            ctx.strokeRect(x, y, width, height);
+            
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, x + width/2, y + 17);
+            
+            return { x, y, width, height };
+        }
+
+        // Game functions
+        function getBlockAt(worldX, worldY) {
+            const blockX = Math.floor(worldX / BLOCK_SIZE);
+            const blockY = Math.floor(worldY / BLOCK_SIZE);
+            
+            if (blockY < 0 || blockY >= game.terrain.length || 
+                blockX < 0 || blockX >= game.terrain[0].length) {
+                return null;
+            }
+            
+            const block = game.terrain[blockY][blockX];
+            return (block && block.exists) ? { x: blockX, y: blockY, ...block } : null;
+        }
+
+        function removeBlock(blockX, blockY) {
+            if (blockY >= 0 && blockY < game.terrain.length && 
+                blockX >= 0 && blockX < game.terrain[0].length) {
+                
+                const block = game.terrain[blockY][blockX];
+                if (block && block.exists) {
+                    // Check inventory space
+                    const currentCount = getCurrentOreCount();
+                    
+                    if (currentCount < game.player.maxInventory) {
+                        // Add ore to inventory
+                        if (block.type === 'bronze') {
+                            game.player.bronzeOre += 1;
+                        } else if (block.type === 'silver') {
+                            game.player.silverOre += 1;
+                        } else if (block.type === 'gold') {
+                            game.player.goldOre += 1;
+                        } else if (block.type === 'platinum') {
+                            game.player.platinumOre += 1;
+                        }
+                        updateOreCount();
+                    }
+                    
+                    game.terrain[blockY][blockX].exists = false;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function checkCollision(x, y, width, height) {
+            const corners = [
+                { x: x + 2, y: y + 2 },
+                { x: x + width - 2, y: y + 2 },
+                { x: x + 2, y: y + height - 2 },
+                { x: x + width - 2, y: y + height - 2 }
+            ];
+            
+            for (let corner of corners) {
+                if (getBlockAt(corner.x, corner.y)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function getAdjacentBlock(direction) {
+            const player = game.player;
+            const centerX = player.x + player.width/2;
+            const centerY = player.y + player.height/2;
+            
+            switch(direction) {
+                case 'down':
+                    return getBlockAt(centerX, player.y + player.height + 1);
+                case 'left':
+                    return getBlockAt(player.x - 1, centerY);
+                case 'right':
+                    return getBlockAt(player.x + player.width + 1, centerY);
+                default:
+                    return null;
+            }
+        }
+
+        function updatePlayer() {
+            const player = game.player;
+            
+            // Simple drilling
+            let drillTarget = null;
+            let drillDirection = '';
+            
+            if (game.keys['s']) {
+                drillTarget = getAdjacentBlock('down');
+                if (drillTarget) drillDirection = 'down';
+            } else if (game.keys['a']) {
+                drillTarget = getAdjacentBlock('left');
+                if (drillTarget) drillDirection = 'left';
+            } else if (game.keys['d']) {
+                drillTarget = getAdjacentBlock('right');
+                if (drillTarget) drillDirection = 'right';
+            }
+            
+            if (drillTarget) {
+                player.drilling = true;
+                player.drillDirection = drillDirection;
+                player.drillProgress += 2;
+                
+                if (player.drillProgress >= 30) {
+                    removeBlock(drillTarget.x, drillTarget.y);
+                    player.drillProgress = 0;
+                    player.fuel = Math.max(0, player.fuel - 0.5);
+                }
+            } else {
+                player.drilling = false;
+                player.drillProgress = 0;
+                player.drillDirection = '';
+            }
+
+            // Movement
+            if (!player.drilling) {
+                if (game.keys['a']) {
+                    player.vx -= 0.25;
+                    player.fuel = Math.max(0, player.fuel - 0.05);
+                }
+                if (game.keys['d']) {
+                    player.vx += 0.25;
+                    player.fuel = Math.max(0, player.fuel - 0.05);
+                }
+            }
+
+            if (game.keys['w']) {
+                player.vy -= 0.4;
+                player.fuel = Math.max(0, player.fuel - 0.08);
+            }
+
+            // Physics
+            player.vy += 0.3; // gravity
+            player.vx *= 0.98; // air resistance
+            player.vy *= 0.98;
+
+            // Speed limit
+            const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+            if (speed > 3) {
+                player.vx = (player.vx / speed) * 3;
+                player.vy = (player.vy / speed) * 3;
+            }
+
+            // Move
+            const oldX = player.x;
+            const oldY = player.y;
+
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Bounds
+            if (player.x < 0) {
+                player.x = 0;
+                player.vx = 0;
+            }
+            if (player.x + player.width > WORLD_WIDTH * BLOCK_SIZE) {
+                player.x = WORLD_WIDTH * BLOCK_SIZE - player.width;
+                player.vx = 0;
+            }
+
+            // Collision
+            if (checkCollision(player.x, oldY, player.width, player.height)) {
+                player.x = oldX;
+                player.vx = 0;
+            }
+            
+            if (checkCollision(oldX, player.y, player.width, player.height)) {
+                player.y = oldY;
+                player.vy = 0;
+            }
+
+            // Ground check
+            if (getAdjacentBlock('down')) {
+                player.onGround = true;
+                if (player.vy > 0) {
+                    player.vy = 0;
+                }
+                player.vx *= 0.92; // friction
+            } else {
+                player.onGround = false;
+            }
+
+            // Camera
+            game.camera.y = Math.max(0, player.y - 200);
+        }
+
+        function render() {
+            console.log('Rendering...');
+            
+            // Clear
+            ctx.fillStyle = '#001122';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!game.showInventory) {
+                // Draw terrain
+                for (let y = 0; y < game.terrain.length; y++) {
+                    for (let x = 0; x < game.terrain[y].length; x++) {
+                        const block = game.terrain[y][x];
+                        if (block && block.exists) {
+                            const screenX = x * BLOCK_SIZE;
+                            const screenY = y * BLOCK_SIZE - game.camera.y;
+                            
+                            // Only draw visible blocks
+                            if (screenY > -BLOCK_SIZE && screenY < canvas.height + BLOCK_SIZE) {
+                                switch (block.type) {
+                                    case 'dirt':
+                                        ctx.fillStyle = '#8B4513';
+                                        break;
+                                    case 'bronze':
+                                        ctx.fillStyle = '#CD7F32';
+                                        break;
+                                    case 'silver':
+                                        ctx.fillStyle = '#C0C0C0';
+                                        break;
+                                    case 'gold':
+                                        ctx.fillStyle = '#FFD700';
+                                        break;
+                                    case 'platinum':
+                                        ctx.fillStyle = '#E5E4E2';
+                                        break;
+                                }
+                                
+                                ctx.fillRect(screenX, screenY, BLOCK_SIZE, BLOCK_SIZE);
+                                ctx.strokeStyle = '#333';
+                                ctx.lineWidth = 1;
+                                ctx.strokeRect(screenX, screenY, BLOCK_SIZE, BLOCK_SIZE);
+                            }
+                        }
+                    }
+                }
+
+                // Draw player
+                const playerScreenY = game.player.y - game.camera.y;
+                ctx.fillStyle = game.player.fuel > 20 ? '#00FF00' : '#FFAA00';
+                ctx.fillRect(game.player.x, playerScreenY, game.player.width, game.player.height);
+
+                // Draw drilling
+                if (game.player.drilling) {
+                    ctx.fillStyle = '#FF6600';
+                    let drillX = game.player.x;
+                    let drillY = playerScreenY;
+                    
+                    if (game.player.drillDirection === 'down') {
+                        drillX = game.player.x + 2;
+                        drillY = playerScreenY + game.player.height;
+                        ctx.fillRect(drillX, drillY, game.player.width - 4, 4);
+                    } else if (game.player.drillDirection === 'left') {
+                        drillX = game.player.x - 4;
+                        drillY = playerScreenY + 2;
+                        ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
+                    } else if (game.player.drillDirection === 'right') {
+                        drillX = game.player.x + game.player.width;
+                        drillY = playerScreenY + 2;
+                        ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
+                    }
+                }
+            }
+
+            // Render inventory if open
+            if (game.showInventory) {
+                renderInventory();
+            }
+
+            // Update UI
+            document.getElementById('fuel').textContent = Math.floor(game.player.fuel);
+            document.getElementById('hull').textContent = Math.floor(game.player.hull);
+            document.getElementById('depth').textContent = Math.floor(Math.max(0, (game.player.y - 180) / BLOCK_SIZE));
+            document.getElementById('ore').textContent = game.player.ore;
+            
+            console.log('Render complete');
+        }
+
+        function gameLoop() {
+            updatePlayer();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start
+        console.log('Starting game...');
+        generateTerrain();
+        console.log('Player position:', game.player.x, game.player.y);
+        console.log('Camera position:', game.camera.y);
+        gameLoop();
+    </script>
+</body>
+</html>
