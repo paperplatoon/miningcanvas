@@ -385,8 +385,8 @@
             const maxWidth = container.clientWidth - 40; // Account for padding
             const maxHeight = container.clientHeight - 40;
             
-            // Calculate the aspect ratio we want (900x600)
-            const aspectRatio = 900 / 600;
+            // Calculate the aspect ratio based on visible blocks
+            const aspectRatio = game.VISIBLE_BLOCKS_X / game.VISIBLE_BLOCKS_Y;
             
             let width = maxWidth;
             let height = width / aspectRatio;
@@ -399,8 +399,8 @@
             canvas.width = width;
             canvas.height = height;
             
-            // Update block size based on canvas width
-            game.BLOCK_SIZE = Math.floor(width / game.WORLD_WIDTH);
+            // Update block size based on visible blocks, not world width
+            game.BLOCK_SIZE = Math.floor(width / game.VISIBLE_BLOCKS_X);
         }
 
         // Simple config
@@ -408,6 +408,8 @@
             BLOCK_SIZE: 40,
             WORLD_WIDTH: 20,
             BASE_WORLD_HEIGHT: 50,
+            VISIBLE_BLOCKS_X: 12,  // How many blocks wide the viewport is
+            VISIBLE_BLOCKS_Y: 10,  // How many blocks tall the viewport is
             
             // Level system
             currentLevel: 1,
@@ -436,7 +438,7 @@
             },
             
             player: {
-                x: 200,
+                x: 100,  // Start more centered in viewport
                 y: 100,
                 vx: 0,
                 vy: 0,
@@ -461,6 +463,7 @@
                 lastMoveDirection: 'right'
             },
             camera: {
+                x: 0,
                 y: 0
             },
             showInventory: false,
@@ -471,6 +474,7 @@
             keys: {},
             lastTime: 0,
             lasers: [],
+            explosions: [],
             shop: { x: 0, y: 8, width: 2, height: 2 },
         };
 
@@ -932,11 +936,12 @@
             game.currentLevel += 1;
             game.currentWorldHeight = game.BASE_WORLD_HEIGHT + ((game.currentLevel - 1) * 20);
             
-            game.player.x = 200;
+            game.player.x = 100;
             game.player.y = 100;
             game.player.vx = 0;
             game.player.vy = 0;
             
+            game.camera.x = 0;
             game.camera.y = 0;
             generateTerrain();
             
@@ -988,6 +993,15 @@
         }
 
         function explodeAt(blockX, blockY) {
+            // Create visual explosion
+            game.explosions.push({
+                x: blockX * game.BLOCK_SIZE + game.BLOCK_SIZE / 2,
+                y: blockY * game.BLOCK_SIZE + game.BLOCK_SIZE / 2,
+                radius: 5,
+                maxRadius: game.BLOCK_SIZE * 1.5,
+                opacity: 1.0
+            });
+            
             for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
                     const targetX = blockX + dx;
@@ -1010,11 +1024,119 @@
         }
 
         function renderLasers() {
-            ctx.fillStyle = '#FF0000';
             for (const laser of game.lasers) {
+                const screenX = laser.x - game.camera.x;
                 const screenY = laser.y - game.camera.y;
-                if (screenY > -10 && screenY < canvas.height + 10) {
-                    ctx.fillRect(laser.x - 2, screenY - 1, 4, 2);
+                if (screenX > -10 && screenX < canvas.width + 10 &&
+                    screenY > -10 && screenY < canvas.height + 10) {
+                    
+                    // Create gradient for laser
+                    const gradient = ctx.createLinearGradient(
+                        screenX - 4, screenY, 
+                        screenX + 4, screenY
+                    );
+                    gradient.addColorStop(0, '#FF6600');
+                    gradient.addColorStop(0.5, '#FFFF00');
+                    gradient.addColorStop(1, '#FF6600');
+                    
+                    // Draw laser with border
+                    ctx.fillStyle = '#FF0000';
+                    ctx.fillRect(screenX - 4, screenY - 3, 8, 6); // Border
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(screenX - 3, screenY - 2, 6, 4); // Inner laser
+                }
+            }
+        }
+
+        function updateExplosions() {
+            for (let i = game.explosions.length - 1; i >= 0; i--) {
+                const explosion = game.explosions[i];
+                explosion.radius += 3;
+                explosion.opacity -= 0.05;
+                
+                if (explosion.opacity <= 0 || explosion.radius > explosion.maxRadius) {
+                    game.explosions.splice(i, 1);
+                }
+            }
+        }
+
+        function renderExplosions() {
+            for (const explosion of game.explosions) {
+                const screenX = explosion.x - game.camera.x;
+                const screenY = explosion.y - game.camera.y;
+                
+                if (screenX > -explosion.radius && screenX < canvas.width + explosion.radius &&
+                    screenY > -explosion.radius && screenY < canvas.height + explosion.radius) {
+                    
+                    ctx.save();
+                    ctx.globalAlpha = explosion.opacity;
+                    
+                    // Outer ring
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, explosion.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#FF6600';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    
+                    // Inner glow
+                    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, explosion.radius);
+                    gradient.addColorStop(0, 'rgba(255, 255, 0, 0.8)');
+                    gradient.addColorStop(0.5, 'rgba(255, 102, 0, 0.4)');
+                    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, explosion.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            }
+        }
+
+        function updateExplosions() {
+            for (let i = game.explosions.length - 1; i >= 0; i--) {
+                const explosion = game.explosions[i];
+                explosion.radius += 3;
+                explosion.opacity -= 0.05;
+                
+                if (explosion.opacity <= 0 || explosion.radius > explosion.maxRadius) {
+                    game.explosions.splice(i, 1);
+                }
+            }
+        }
+
+        function renderExplosions() {
+            for (const explosion of game.explosions) {
+                const screenX = explosion.x - game.camera.x;
+                const screenY = explosion.y - game.camera.y;
+                
+                if (screenX > -explosion.radius && screenX < canvas.width + explosion.radius &&
+                    screenY > -explosion.radius && screenY < canvas.height + explosion.radius) {
+                    
+                    ctx.save();
+                    ctx.globalAlpha = explosion.opacity;
+                    
+                    // Outer ring
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, explosion.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = '#FF6600';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                    
+                    // Inner glow
+                    const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, explosion.radius);
+                    gradient.addColorStop(0, 'rgba(255, 255, 0, 0.8)');
+                    gradient.addColorStop(0.5, 'rgba(255, 102, 0, 0.4)');
+                    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                    
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, explosion.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                    
+                    ctx.restore();
                 }
             }
         }
@@ -1209,7 +1331,17 @@
                 player.onGround = false;
             }
 
-            game.camera.y = Math.max(0, player.y - 200);
+            // Update camera to follow player
+            const halfViewportWidth = (game.VISIBLE_BLOCKS_X * game.BLOCK_SIZE) / 2;
+            const halfViewportHeight = (game.VISIBLE_BLOCKS_Y * game.BLOCK_SIZE) / 2;
+            
+            // Center camera on player
+            game.camera.x = player.x + player.width/2 - halfViewportWidth;
+            game.camera.y = player.y + player.height/2 - halfViewportHeight;
+            
+            // Clamp camera to world bounds
+            game.camera.x = Math.max(0, Math.min(game.camera.x, game.WORLD_WIDTH * game.BLOCK_SIZE - game.VISIBLE_BLOCKS_X * game.BLOCK_SIZE));
+            game.camera.y = Math.max(0, Math.min(game.camera.y, game.currentWorldHeight * game.BLOCK_SIZE - game.VISIBLE_BLOCKS_Y * game.BLOCK_SIZE));
             
             checkLevelProgression();
             
@@ -1241,73 +1373,81 @@
             ctx.fillStyle = '#001122';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw terrain
-            for (let y = 0; y < game.terrain.length; y++) {
-                for (let x = 0; x < game.terrain[y].length; x++) {
-                    const block = game.terrain[y][x];
+            // Calculate visible block range
+            const startBlockX = Math.floor(game.camera.x / game.BLOCK_SIZE);
+            const endBlockX = Math.ceil((game.camera.x + canvas.width) / game.BLOCK_SIZE);
+            const startBlockY = Math.floor(game.camera.y / game.BLOCK_SIZE);
+            const endBlockY = Math.ceil((game.camera.y + canvas.height) / game.BLOCK_SIZE);
+
+            // Draw only visible terrain
+            for (let y = startBlockY; y <= endBlockY && y < game.currentWorldHeight; y++) {
+                if (y < 0) continue;
+                for (let x = startBlockX; x <= endBlockX && x < game.WORLD_WIDTH; x++) {
+                    if (x < 0) continue;
+                    
+                    const block = game.terrain[y] && game.terrain[y][x];
                     if (block && block.exists) {
-                        const screenX = x * game.BLOCK_SIZE;
+                        const screenX = x * game.BLOCK_SIZE - game.camera.x;
                         const screenY = y * game.BLOCK_SIZE - game.camera.y;
                         
-                        if (screenY > -game.BLOCK_SIZE && screenY < canvas.height + game.BLOCK_SIZE) {
-                            switch (block.type) {
-                                case 'dirt':
-                                    ctx.fillStyle = '#8B4513';
-                                    break;
-                                case 'bronze':
-                                    ctx.fillStyle = '#CD7F32';
-                                    break;
-                                case 'silver':
-                                    ctx.fillStyle = '#C0C0C0';
-                                    break;
-                                case 'gold':
-                                    ctx.fillStyle = '#FFD700';
-                                    break;
-                                case 'platinum':
-                                    ctx.fillStyle = '#E5E4E2';
-                                    break;
-                                case 'shop':
-                                    ctx.fillStyle = '#00AAFF';
-                                    break;
-                            }
-                            
-                            ctx.fillRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
-                            ctx.strokeStyle = '#333';
-                            ctx.lineWidth = 1;
-                            ctx.strokeRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
-                            
-                            if (block.type === 'shop') {
-                                ctx.fillStyle = 'white';
-                                ctx.font = `${Math.floor(game.BLOCK_SIZE * 0.25)}px Arial`;
-                                ctx.textAlign = 'center';
-                                ctx.fillText('SHOP', screenX + game.BLOCK_SIZE/2, screenY + game.BLOCK_SIZE/2 + 3);
-                            }
+                        switch (block.type) {
+                            case 'dirt':
+                                ctx.fillStyle = '#8B4513';
+                                break;
+                            case 'bronze':
+                                ctx.fillStyle = '#CD7F32';
+                                break;
+                            case 'silver':
+                                ctx.fillStyle = '#C0C0C0';
+                                break;
+                            case 'gold':
+                                ctx.fillStyle = '#FFD700';
+                                break;
+                            case 'platinum':
+                                ctx.fillStyle = '#E5E4E2';
+                                break;
+                            case 'shop':
+                                ctx.fillStyle = '#00AAFF';
+                                break;
+                        }
+                        
+                        ctx.fillRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
+                        ctx.strokeStyle = '#333';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
+                        
+                        if (block.type === 'shop') {
+                            ctx.fillStyle = 'white';
+                            ctx.font = `${Math.floor(game.BLOCK_SIZE * 0.25)}px Arial`;
+                            ctx.textAlign = 'center';
+                            ctx.fillText('SHOP', screenX + game.BLOCK_SIZE/2, screenY + game.BLOCK_SIZE/2 + 3);
                         }
                     }
                 }
             }
 
-            // Draw player
+            // Draw player relative to camera
+            const playerScreenX = game.player.x - game.camera.x;
             const playerScreenY = game.player.y - game.camera.y;
             ctx.fillStyle = game.player.fuel > 20 ? '#00FF00' : '#FFAA00';
-            ctx.fillRect(game.player.x, playerScreenY, game.player.width, game.player.height);
+            ctx.fillRect(playerScreenX, playerScreenY, game.player.width, game.player.height);
 
-            // Draw drilling
+            // Draw drilling relative to camera
             if (game.player.drilling) {
                 ctx.fillStyle = '#FF6600';
-                let drillX = game.player.x;
+                let drillX = playerScreenX;
                 let drillY = playerScreenY;
                 
                 if (game.player.drillDirection === 'down') {
-                    drillX = game.player.x + 2;
+                    drillX = playerScreenX + 2;
                     drillY = playerScreenY + game.player.height;
                     ctx.fillRect(drillX, drillY, game.player.width - 4, 4);
                 } else if (game.player.drillDirection === 'left') {
-                    drillX = game.player.x - 4;
+                    drillX = playerScreenX - 4;
                     drillY = playerScreenY + 2;
                     ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
                 } else if (game.player.drillDirection === 'right') {
-                    drillX = game.player.x + game.player.width;
+                    drillX = playerScreenX + game.player.width;
                     drillY = playerScreenY + 2;
                     ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
                 }
@@ -1315,11 +1455,15 @@
 
             // Draw lasers
             renderLasers();
+            
+            // Draw explosions
+            renderExplosions();
         }
 
         function gameLoop() {
             updatePlayer();
             updateLasers();
+            updateExplosions();
             render();
             requestAnimationFrame(gameLoop);
         }
