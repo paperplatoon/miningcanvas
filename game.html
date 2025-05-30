@@ -3,63 +3,436 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mining Game - Fixed Complete Version</title>
+    <title>Mining Game - Responsive Version</title>
     <style>
-        body {
+        * {
+            box-sizing: border-box;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+        }
+
+        body {
             background: #222;
             color: white;
             font-family: Arial, sans-serif;
+            overflow: hidden;
+            position: relative;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        canvas {
+
+        /* Stats Bar */
+        .stats-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+            justify-content: flex-start;
+            z-index: 100;
+            border-bottom: 2px solid #444;
+        }
+
+        .stat-item {
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 768px) {
+            .stats-bar {
+                font-size: 12px;
+                gap: 10px;
+                padding: 8px;
+            }
+        }
+
+        /* Game Container */
+        .game-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #gameCanvas {
+            max-width: 100%;
+            max-height: 100%;
             border: 2px solid #444;
             background: #000;
         }
-        .controls {
-            margin-top: 10px;
-        }
-        .stats {
-            margin-top: 10px;
+
+        /* Modal Base */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
             display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: #333;
+            border: 2px solid #666;
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            color: white;
+        }
+
+        /* Inventory Styles */
+        .inventory-grid {
+            display: flex;
+            flex-direction: column;
             gap: 20px;
+        }
+
+        .ore-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        .ore-info {
+            flex: 1;
+            font-size: 16px;
+        }
+
+        .ore-bronze { color: #CD7F32; }
+        .ore-silver { color: #C0C0C0; }
+        .ore-gold { color: #FFD700; }
+        .ore-platinum { color: #E5E4E2; }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Shop Styles */
+        .shop-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 10px 20px;
+            background: #444;
+            border: 1px solid #666;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .tab-button:hover {
+            background: #555;
+            border-color: #888;
+        }
+
+        .tab-button.active {
+            background: #555;
+            border-color: #888;
+        }
+
+        .shop-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .shop-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+        }
+
+        .shop-info {
+            flex: 1;
+            font-size: 16px;
+        }
+
+        /* Button Styles */
+        .game-button {
+            padding: 8px 16px;
+            border: 1px solid;
+            background: #006600;
+            border-color: #00AA00;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            white-space: nowrap;
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .game-button:hover {
+            background: #008800;
+            border-color: #00CC00;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 255, 0, 0.3);
+        }
+
+        .game-button.convert {
+            background: #004466;
+            border-color: #0066AA;
+        }
+
+        .game-button.convert:hover {
+            background: #005577;
+            border-color: #0088CC;
+            box-shadow: 0 2px 4px rgba(0, 136, 204, 0.3);
+        }
+
+        .game-button.sell-all {
+            background: #AA0000;
+            border-color: #CC0000;
+        }
+
+        .game-button.sell-all:hover {
+            background: #CC0000;
+            border-color: #EE0000;
+            box-shadow: 0 2px 4px rgba(255, 0, 0, 0.3);
+        }
+
+        .game-button:disabled {
+            background: #666;
+            border-color: #888;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .game-button:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Instructions */
+        .modal-instructions {
+            text-align: center;
+            color: #AAA;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+
+        /* Shop Prompt */
+        .shop-prompt {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border: 1px solid #666;
+            border-radius: 4px;
+            font-size: 16px;
+            z-index: 50;
+        }
+
+        /* Controls */
+        .controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            text-align: center;
+            font-size: 14px;
+            color: #CCC;
+            z-index: 50;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .modal-content {
+                padding: 15px;
+            }
+
+            .modal-title {
+                font-size: 18px;
+            }
+
+            .ore-info, .shop-info {
+                font-size: 14px;
+            }
+
+            .game-button {
+                font-size: 12px;
+                padding: 6px 12px;
+                min-width: 70px;
+            }
+
+            .button-group {
+                gap: 5px;
+            }
+        }
+
+        /* Hide elements by default */
+        .modal-overlay {
+            display: none;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .shop-prompt {
+            display: none;
+        }
+
+        .shop-prompt.show {
+            display: block;
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stat-item">Fuel: <span id="fuel">100/100</span></div>
+        <div class="stat-item">Hull: <span id="hull">100/100</span></div>
+        <div class="stat-item">Level: <span id="level">1</span></div>
+        <div class="stat-item">Depth: <span id="depth">0</span>m</div>
+        <div class="stat-item">Inventory: <span id="inventory">0/12</span></div>
+        <div class="stat-item">Ammo: <span id="ammo">5</span></div>
+        <div class="stat-item">Credits: <span id="credits">0</span></div>
+    </div>
+
+    <!-- Game Container -->
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- Controls -->
     <div class="controls">
         <strong>Controls:</strong> A/D to move/drill left/right, W to thrust up, S to drill/move down, SPACE to fire laser, E to enter shop, I for inventory
     </div>
-    <div class="stats">
-        <div>Fuel: <span id="fuel">100</span></div>
-        <div>Hull: <span id="hull">100</span></div>
-        <div>Depth: <span id="depth">0</span>m</div>
-        <div>Inventory: <span id="ore">0</span></div>
+
+    <!-- Shop Prompt -->
+    <div class="shop-prompt" id="shopPrompt">
+        Press E to enter shop
+    </div>
+
+    <!-- Inventory Modal -->
+    <div class="modal-overlay" id="inventoryModal">
+        <div class="modal-content">
+            <h2 class="modal-title">INVENTORY (<span id="invCount">0/12</span>)</h2>
+            <div class="inventory-grid" id="inventoryContent">
+                <!-- Dynamically populated -->
+            </div>
+            <div class="modal-instructions">
+                Convert 3 of any ore to 1 of the next tier • SPACE to fire laser • Visit SHOP to sell ore • Press I to close
+            </div>
+        </div>
+    </div>
+
+    <!-- Shop Modal -->
+    <div class="modal-overlay" id="shopModal">
+        <div class="modal-content">
+            <h2 class="modal-title">SHOP - Credits: <span id="shopCredits">0</span></h2>
+            <div class="shop-tabs">
+                <button class="tab-button active" id="sellTab">SELL</button>
+                <button class="tab-button" id="buyTab">BUY</button>
+            </div>
+            <div class="shop-content" id="shopContent">
+                <!-- Dynamically populated -->
+            </div>
+            <div class="modal-instructions">
+                ESC to close shop • Click outside to close
+            </div>
+        </div>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            const container = document.querySelector('.game-container');
+            const maxWidth = container.clientWidth - 40; // Account for padding
+            const maxHeight = container.clientHeight - 40;
+            
+            // Calculate the aspect ratio we want (900x600)
+            const aspectRatio = 900 / 600;
+            
+            let width = maxWidth;
+            let height = width / aspectRatio;
+            
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * aspectRatio;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Update block size based on canvas width
+            game.BLOCK_SIZE = Math.floor(width / game.WORLD_WIDTH);
+        }
+
         // Simple config
-        const BLOCK_SIZE = 40;
-        const WORLD_WIDTH = 20;
-        const BASE_WORLD_HEIGHT = 50;
-        
-        // Game state
         const game = {
+            BLOCK_SIZE: 40,
+            WORLD_WIDTH: 20,
+            BASE_WORLD_HEIGHT: 50,
+            
             // Level system
             currentLevel: 1,
-            currentWorldHeight: BASE_WORLD_HEIGHT,
+            currentWorldHeight: 50,
             
             // Ore generation settings
             oreGeneration: {
-                oreChance: 0.1,        // 10% chance for any ore
-                platinumChance: 0.01,  // 1% of ores are platinum
-                goldChance: 0.03,      // 3% of ores are gold  
-                silverChance: 0.06,    // 6% of ores are silver
-                // Bronze is the remainder (90% of ores)
+                oreChance: 0.2,
+                platinumChance: 0.01,
+                goldChance: 0.04,
+                silverChance: 0.08,
+            },
+            
+            // Player movement and action settings
+            playerStats: {
+                moveAcceleration: 0.4,
+                thrustPower: 0.6,
+                drillSpeed: 1.5,
+                drillTime: 30,
+            },
+            
+            // Shop pricing settings
+            shopPricing: {
+                fuelCostModifier: 0.05,
+                hullCostModifier: 1.0,
             },
             
             player: {
@@ -92,34 +465,13 @@
             },
             showInventory: false,
             showShop: false,
-            shopTab: 'sell', // 'sell' or 'buy'
+            shopTab: 'sell',
             nearShop: false,
             terrain: [],
             keys: {},
             lastTime: 0,
             lasers: [],
-            // Shop building position
             shop: { x: 0, y: 8, width: 2, height: 2 },
-            // Inventory buttons
-            fuelButton: null,
-            upgradeCargoButton: null,
-            upgradeHullButton: null,
-            bronzeConvertButton: null,
-            silverConvertButton: null,
-            goldConvertButton: null,
-            ammoButton: null,
-            // Shop buttons
-            sellBronzeButton: null,
-            sellSilverButton: null,
-            sellGoldButton: null,
-            sellPlatinumButton: null,
-            sellAllButton: null,
-            buyFuelButton: null,
-            buyHullRepairButton: null,
-            buyMaxFuelButton: null,
-            buyMaxHullButton: null,
-            sellTabButton: null,
-            buyTabButton: null
         };
 
         // Create simple terrain
@@ -128,9 +480,8 @@
             
             for (let y = 0; y < game.currentWorldHeight; y++) {
                 game.terrain[y] = [];
-                for (let x = 0; x < WORLD_WIDTH; x++) {
+                for (let x = 0; x < game.WORLD_WIDTH; x++) {
                     if (y >= 10) {
-                        // Dirt with some ores
                         let blockType = 'dirt';
                         if (Math.random() < game.oreGeneration.oreChance) {
                             const oreRoll = Math.random();
@@ -142,10 +493,8 @@
                         game.terrain[y][x] = { type: blockType, exists: true };
                     } else if (y >= game.shop.y && y < game.shop.y + game.shop.height && 
                                x >= game.shop.x && x < game.shop.x + game.shop.width) {
-                        // Shop building
                         game.terrain[y][x] = { type: 'shop', exists: true };
                     } else {
-                        // Air
                         game.terrain[y][x] = { type: 'air', exists: false };
                     }
                 }
@@ -156,21 +505,19 @@
         document.addEventListener('keydown', (e) => {
             game.keys[e.key.toLowerCase()] = true;
             if (e.key.toLowerCase() === 'i') {
-                game.showInventory = !game.showInventory;
-                game.showShop = false; // Close shop when opening inventory
+                toggleInventory();
             }
             if (e.key.toLowerCase() === 'e' && game.nearShop) {
-                game.showShop = !game.showShop;
-                game.showInventory = false; // Close inventory when opening shop
-                game.shopTab = 'sell';
+                toggleShop();
             }
             if (e.key === ' ') {
                 e.preventDefault();
-                fireLaser();
+                if (!game.showInventory && !game.showShop) {
+                    fireLaser();
+                }
             }
             if (e.key === 'Escape') {
-                game.showInventory = false;
-                game.showShop = false;
+                closeAllModals();
             }
         });
 
@@ -178,103 +525,256 @@
             game.keys[e.key.toLowerCase()] = false;
         });
 
-        // Add click handler for inventory buttons
-        canvas.addEventListener('click', (e) => {
+        // Modal management
+        function toggleInventory() {
+            game.showInventory = !game.showInventory;
             if (game.showInventory) {
-                handleInventoryClick(e);
-            } else if (game.showShop) {
-                handleShopClick(e);
+                game.showShop = false;
+                updateInventoryUI();
+                document.getElementById('inventoryModal').classList.add('show');
+                document.getElementById('shopModal').classList.remove('show');
+            } else {
+                document.getElementById('inventoryModal').classList.remove('show');
+            }
+        }
+
+        function toggleShop() {
+            game.showShop = !game.showShop;
+            if (game.showShop) {
+                game.showInventory = false;
+                updateShopUI();
+                document.getElementById('shopModal').classList.add('show');
+                document.getElementById('inventoryModal').classList.remove('show');
+            } else {
+                document.getElementById('shopModal').classList.remove('show');
+            }
+        }
+
+        function closeAllModals() {
+            game.showInventory = false;
+            game.showShop = false;
+            document.getElementById('inventoryModal').classList.remove('show');
+            document.getElementById('shopModal').classList.remove('show');
+        }
+
+        // Click outside to close modals
+        document.getElementById('inventoryModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeAllModals();
             }
         });
 
-        function handleInventoryClick(e) {
-            const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
+        document.getElementById('shopModal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                closeAllModals();
+            }
+        });
+
+        // Shop tabs
+        document.getElementById('sellTab').addEventListener('click', () => {
+            game.shopTab = 'sell';
+            document.getElementById('sellTab').classList.add('active');
+            document.getElementById('buyTab').classList.remove('active');
+            updateShopUI();
+        });
+
+        document.getElementById('buyTab').addEventListener('click', () => {
+            game.shopTab = 'buy';
+            document.getElementById('buyTab').classList.add('active');
+            document.getElementById('sellTab').classList.remove('active');
+            updateShopUI();
+        });
+
+        // Inventory UI
+        function updateInventoryUI() {
+            const currentCount = getCurrentOreCount();
+            document.getElementById('invCount').textContent = `${currentCount}/${game.player.maxInventory}`;
             
-            // Check all buttons
-            if (game.fuelButton && isPointInButton(clickX, clickY, game.fuelButton)) {
-                craftFuel();
+            const content = document.getElementById('inventoryContent');
+            content.innerHTML = '';
+            
+            // Bronze ore
+            if (game.player.bronzeOre > 0 || true) {
+                const row = createInventoryRow('Bronze Ore', game.player.bronzeOre, 'bronze');
+                if (game.player.bronzeOre > 0) {
+                    addButton(row, 'Make Fuel (+15)', () => craftFuel());
+                }
+                if (game.player.bronzeOre >= 3) {
+                    addButton(row, 'Convert to Silver', () => convertOre('bronze', 'silver'), 'convert');
+                }
+                content.appendChild(row);
             }
-            if (game.upgradeCargoButton && isPointInButton(clickX, clickY, game.upgradeCargoButton)) {
-                upgradeInventory();
+            
+            // Silver ore
+            if (game.player.silverOre > 0 || true) {
+                const row = createInventoryRow('Silver Ore', game.player.silverOre, 'silver');
+                if (game.player.silverOre > 0) {
+                    addButton(row, 'Make Ammo (1)', () => craftAmmo());
+                }
+                if (game.player.silverOre >= 3) {
+                    addButton(row, 'Convert to Gold', () => convertOre('silver', 'gold'), 'convert');
+                }
+                content.appendChild(row);
             }
-            if (game.bronzeConvertButton && isPointInButton(clickX, clickY, game.bronzeConvertButton)) {
-                convertOre('bronze', 'silver');
+            
+            // Gold ore
+            if (game.player.goldOre > 0 || true) {
+                const row = createInventoryRow('Gold Ore', game.player.goldOre, 'gold');
+                if (game.player.goldOre > 0) {
+                    addButton(row, 'Upgrade Cargo (+1)', () => upgradeInventory());
+                }
+                if (game.player.goldOre >= 3) {
+                    addButton(row, 'Convert to Platinum', () => convertOre('gold', 'platinum'), 'convert');
+                }
+                content.appendChild(row);
             }
-            if (game.silverConvertButton && isPointInButton(clickX, clickY, game.silverConvertButton)) {
-                convertOre('silver', 'gold');
-            }
-            if (game.goldConvertButton && isPointInButton(clickX, clickY, game.goldConvertButton)) {
-                convertOre('gold', 'platinum');
-            }
-            if (game.ammoButton && isPointInButton(clickX, clickY, game.ammoButton)) {
-                craftAmmo();
-            }
+            
+            // Platinum ore
+            const platRow = createInventoryRow('Platinum Ore', game.player.platinumOre, 'platinum');
+            content.appendChild(platRow);
         }
 
-        function handleShopClick(e) {
-            const rect = canvas.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const clickY = e.clientY - rect.top;
+        function createInventoryRow(label, count, oreType) {
+            const row = document.createElement('div');
+            row.className = 'ore-row';
             
-            // Check if clicking outside shop panel to close
-            const panelWidth = 600;
-            const panelHeight = 500;
-            const panelX = (canvas.width - panelWidth) / 2;
-            const panelY = (canvas.height - panelHeight) / 2;
+            const info = document.createElement('div');
+            info.className = `ore-info ore-${oreType}`;
+            info.textContent = `${label}: ${count}`;
+            row.appendChild(info);
             
-            if (clickX < panelX || clickX > panelX + panelWidth || 
-                clickY < panelY || clickY > panelY + panelHeight) {
-                game.showShop = false;
-                return;
-            }
+            const buttonGroup = document.createElement('div');
+            buttonGroup.className = 'button-group';
+            row.appendChild(buttonGroup);
             
-            // Check tab buttons
-            if (game.sellTabButton && isPointInButton(clickX, clickY, game.sellTabButton)) {
-                game.shopTab = 'sell';
-            }
-            if (game.buyTabButton && isPointInButton(clickX, clickY, game.buyTabButton)) {
-                game.shopTab = 'buy';
-            }
+            return row;
+        }
+
+        function addButton(row, text, onClick, className = '') {
+            const button = document.createElement('button');
+            button.className = `game-button ${className}`;
+            button.textContent = text;
+            button.onclick = onClick;
+            row.querySelector('.button-group').appendChild(button);
+            return button
+        }
+
+        // Shop UI
+        function updateShopUI() {
+            document.getElementById('shopCredits').textContent = game.player.credits;
+            const content = document.getElementById('shopContent');
+            content.innerHTML = '';
             
             if (game.shopTab === 'sell') {
-                // Sell buttons
-                if (game.sellBronzeButton && isPointInButton(clickX, clickY, game.sellBronzeButton)) {
-                    sellOre('bronze');
+                const prices = { bronze: 1, silver: 3, gold: 10, platinum: 30 };
+                
+                if (game.player.bronzeOre > 0) {
+                    const row = createShopRow(`Bronze Ore: ${game.player.bronzeOre} (${prices.bronze} credits each)`, 'bronze');
+                    addButton(row, 'Sell One', () => sellOre('bronze'));
+                    content.appendChild(row);
                 }
-                if (game.sellSilverButton && isPointInButton(clickX, clickY, game.sellSilverButton)) {
-                    sellOre('silver');
+                
+                if (game.player.silverOre > 0) {
+                    const row = createShopRow(`Silver Ore: ${game.player.silverOre} (${prices.silver} credits each)`, 'silver');
+                    addButton(row, 'Sell One', () => sellOre('silver'));
+                    content.appendChild(row);
                 }
-                if (game.sellGoldButton && isPointInButton(clickX, clickY, game.sellGoldButton)) {
-                    sellOre('gold');
+                
+                if (game.player.goldOre > 0) {
+                    const row = createShopRow(`Gold Ore: ${game.player.goldOre} (${prices.gold} credits each)`, 'gold');
+                    addButton(row, 'Sell One', () => sellOre('gold'));
+                    content.appendChild(row);
                 }
-                if (game.sellPlatinumButton && isPointInButton(clickX, clickY, game.sellPlatinumButton)) {
-                    sellOre('platinum');
+                
+                if (game.player.platinumOre > 0) {
+                    const row = createShopRow(`Platinum Ore: ${game.player.platinumOre} (${prices.platinum} credits each)`, 'platinum');
+                    addButton(row, 'Sell One', () => sellOre('platinum'));
+                    content.appendChild(row);
                 }
-                if (game.sellAllButton && isPointInButton(clickX, clickY, game.sellAllButton)) {
-                    sellAllOre();
+                
+                const totalOre = getCurrentOreCount();
+                if (totalOre > 0) {
+                    const totalValue = game.player.bronzeOre * prices.bronze + 
+                                     game.player.silverOre * prices.silver + 
+                                     game.player.goldOre * prices.gold + 
+                                     game.player.platinumOre * prices.platinum;
+                    
+                    const totalRow = document.createElement('div');
+                    totalRow.style.textAlign = 'center';
+                    totalRow.style.marginTop = '20px';
+                    totalRow.innerHTML = `<p style="color: white; margin-bottom: 10px;">Total value: ${totalValue} credits</p>`;
+                    
+                    const sellAllBtn = document.createElement('button');
+                    sellAllBtn.className = 'game-button sell-all';
+                    sellAllBtn.textContent = 'SELL ALL';
+                    sellAllBtn.onclick = sellAllOre;
+                    totalRow.appendChild(sellAllBtn);
+                    
+                    content.appendChild(totalRow);
                 }
             } else {
-                // Buy buttons
-                if (game.buyFuelButton && isPointInButton(clickX, clickY, game.buyFuelButton)) {
-                    buyFuel();
+                // Buy tab
+                const missingFuel = Math.ceil(game.player.maxFuel - game.player.fuel);
+                const fuelCost = Math.ceil(missingFuel * game.shopPricing.fuelCostModifier);
+                if (missingFuel > 0) {
+                    const row = createShopRow(`Refill Fuel (${missingFuel} units) - ${fuelCost} credits`);
+                    const btn = addButton(row, 'Buy', () => buyFuel());
+                    if (game.player.credits < fuelCost) btn.disabled = true;
+                    content.appendChild(row);
                 }
-                if (game.buyHullRepairButton && isPointInButton(clickX, clickY, game.buyHullRepairButton)) {
-                    buyHullRepair();
+                
+                const missingHull = game.player.maxHull - game.player.hull;
+                const hullCost = Math.ceil(missingHull * game.shopPricing.hullCostModifier);
+                if (missingHull > 0) {
+                    const row = createShopRow(`Repair Hull (${missingHull} points) - ${hullCost} credits`);
+                    const btn = addButton(row, 'Buy', () => buyHullRepair());
+                    if (game.player.credits < hullCost) btn.disabled = true;
+                    content.appendChild(row);
                 }
-                if (game.buyMaxFuelButton && isPointInButton(clickX, clickY, game.buyMaxFuelButton)) {
-                    buyMaxFuelUpgrade();
-                }
-                if (game.buyMaxHullButton && isPointInButton(clickX, clickY, game.buyMaxHullButton)) {
-                    buyMaxHullUpgrade();
-                }
+                
+                const upgradesTitle = document.createElement('div');
+                upgradesTitle.style.color = '#AAA';
+                upgradesTitle.style.marginTop = '20px';
+                upgradesTitle.textContent = 'UPGRADES:';
+                content.appendChild(upgradesTitle);
+                
+                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel (+20) - 50 credits`);
+                const fuelBtn = addButton(fuelUpgradeRow, 'Buy', () => buyMaxFuelUpgrade());
+                if (game.player.credits < 50) fuelBtn.disabled = true;
+                content.appendChild(fuelUpgradeRow);
+                
+                const hullUpgradeRow = createShopRow(`Upgrade Max Hull (+10) - 100 credits`);
+                const hullBtn = addButton(hullUpgradeRow, 'Buy', () => buyMaxHullUpgrade());
+                if (game.player.credits < 100) hullBtn.disabled = true;
+                content.appendChild(hullUpgradeRow);
             }
         }
 
-        function isPointInButton(x, y, button) {
-            return x >= button.x && x <= button.x + button.width &&
-                   y >= button.y && y <= button.y + button.height;
+        function createShopRow(text, oreType = '') {
+            const row = document.createElement('div');
+            row.className = 'shop-item';
+            
+            const info = document.createElement('div');
+            info.className = `shop-info ${oreType ? 'ore-' + oreType : ''}`;
+            info.textContent = text;
+            row.appendChild(info);
+            
+            const buttonGroup = document.createElement('div');
+            buttonGroup.className = 'button-group';
+            row.appendChild(buttonGroup);
+            
+            return row;
+        }
+
+        // Update stats display
+        function updateStatsDisplay() {
+            document.getElementById('fuel').textContent = `${Math.floor(game.player.fuel)}/${Math.floor(game.player.maxFuel)}`;
+            document.getElementById('hull').textContent = `${Math.floor(game.player.hull)}/${Math.floor(game.player.maxHull)}`;
+            document.getElementById('level').textContent = game.currentLevel;
+            document.getElementById('depth').textContent = Math.floor(Math.max(0, (game.player.y - 180) / game.BLOCK_SIZE));
+            document.getElementById('inventory').textContent = `${getCurrentOreCount()}/${game.player.maxInventory}`;
+            document.getElementById('ammo').textContent = game.player.ammo;
+            document.getElementById('credits').textContent = game.player.credits;
         }
 
         // Inventory functions
@@ -283,6 +783,8 @@
                 game.player.bronzeOre -= 1;
                 game.player.fuel = Math.min(game.player.maxFuel, game.player.fuel + 15);
                 updateOreCount();
+                updateInventoryUI();
+                updateStatsDisplay();
             }
         }
 
@@ -291,6 +793,8 @@
                 game.player.silverOre -= 1;
                 game.player.ammo += 1;
                 updateOreCount();
+                updateInventoryUI();
+                updateStatsDisplay();
             }
         }
 
@@ -299,14 +803,8 @@
                 game.player.goldOre -= 1;
                 game.player.maxInventory += 1;
                 updateOreCount();
-            }
-        }
-
-        function upgradeHull() {
-            if (game.player.platinumOre > 0) {
-                game.player.platinumOre -= 1;
-                game.player.hull = Math.min(game.player.maxHull, game.player.hull + 2);
-                updateOreCount();
+                updateInventoryUI();
+                updateStatsDisplay();
             }
         }
 
@@ -322,6 +820,7 @@
                 game.player.platinumOre += 1;
             }
             updateOreCount();
+            updateInventoryUI();
         }
 
         // Shop functions
@@ -342,43 +841,49 @@
                 game.player.credits += prices.platinum;
             }
             updateOreCount();
+            updateShopUI();
+            updateStatsDisplay();
         }
 
         function sellAllOre() {
             const prices = { bronze: 1, silver: 3, gold: 10, platinum: 30 };
             
-            // Sell all ore types
             game.player.credits += game.player.bronzeOre * prices.bronze;
             game.player.credits += game.player.silverOre * prices.silver;
             game.player.credits += game.player.goldOre * prices.gold;
             game.player.credits += game.player.platinumOre * prices.platinum;
             
-            // Reset ore counts
             game.player.bronzeOre = 0;
             game.player.silverOre = 0;
             game.player.goldOre = 0;
             game.player.platinumOre = 0;
             
             updateOreCount();
+            updateShopUI();
+            updateStatsDisplay();
         }
 
         function buyFuel() {
             const missingFuel = game.player.maxFuel - game.player.fuel;
-            const fuelCost = Math.ceil(missingFuel * 0.05);
+            const fuelCost = Math.ceil(missingFuel * game.shopPricing.fuelCostModifier);
             
             if (game.player.credits >= fuelCost && missingFuel > 0) {
                 game.player.credits -= fuelCost;
                 game.player.fuel = game.player.maxFuel;
+                updateShopUI();
+                updateStatsDisplay();
             }
         }
 
         function buyHullRepair() {
             const missingHull = game.player.maxHull - game.player.hull;
-            const hullCost = Math.ceil(missingHull * 1);
+            const hullCost = Math.ceil(missingHull * game.shopPricing.hullCostModifier);
             
             if (game.player.credits >= hullCost && missingHull > 0) {
                 game.player.credits -= hullCost;
                 game.player.hull = game.player.maxHull;
+                updateShopUI();
+                updateStatsDisplay();
             }
         }
 
@@ -388,6 +893,8 @@
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
                 game.player.maxFuel += 20;
+                updateShopUI();
+                updateStatsDisplay();
             }
         }
 
@@ -397,11 +904,12 @@
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
                 game.player.maxHull += 10;
+                updateShopUI();
+                updateStatsDisplay();
             }
         }
 
         function updateOreCount() {
-            // Update total ore count for display
             game.player.ore = game.player.bronzeOre + (game.player.silverOre * 3) + 
                              (game.player.goldOre * 10) + (game.player.platinumOre * 30);
         }
@@ -413,41 +921,33 @@
         // Level progression system
         function checkLevelProgression() {
             const player = game.player;
-            const bottomRow = (game.currentWorldHeight - 1) * BLOCK_SIZE;
+            const bottomRow = (game.currentWorldHeight - 1) * game.BLOCK_SIZE;
             
-            // Check if player has reached the bottom row
             if (player.y >= bottomRow) {
                 advanceToNextLevel();
             }
         }
 
         function advanceToNextLevel() {
-            // Increment level
             game.currentLevel += 1;
+            game.currentWorldHeight = game.BASE_WORLD_HEIGHT + ((game.currentLevel - 1) * 20);
             
-            // Increase world height
-            game.currentWorldHeight = BASE_WORLD_HEIGHT + ((game.currentLevel - 1) * 20);
-            
-            // Reset player to top of new level (near shop)
             game.player.x = 200;
             game.player.y = 100;
             game.player.vx = 0;
             game.player.vy = 0;
             
-            // Reset camera
             game.camera.y = 0;
-            
-            // Generate new terrain for the larger world
             generateTerrain();
             
-            // Optional: Could add level-up rewards or notifications here
             console.log(`Advanced to Level ${game.currentLevel}! World height: ${game.currentWorldHeight}`);
         }
 
         // Laser System
         function fireLaser() {
-            if (game.player.ammo > 0 && !game.showInventory) {
+            if (game.player.ammo > 0) {
                 game.player.ammo -= 1;
+                updateStatsDisplay();
                 
                 const laser = {
                     x: game.player.x + game.player.width / 2,
@@ -470,18 +970,15 @@
                     continue;
                 }
                 
-                // Move laser
                 laser.x += laser.vx;
                 laser.y += laser.vy;
                 
-                // Check bounds
-                if (laser.x < 0 || laser.x > WORLD_WIDTH * BLOCK_SIZE || 
-                    laser.y < 0 || laser.y > game.currentWorldHeight * BLOCK_SIZE) {
+                if (laser.x < 0 || laser.x > game.WORLD_WIDTH * game.BLOCK_SIZE || 
+                    laser.y < 0 || laser.y > game.currentWorldHeight * game.BLOCK_SIZE) {
                     game.lasers.splice(i, 1);
                     continue;
                 }
                 
-                // Check collision with terrain
                 const hitBlock = getBlockAt(laser.x, laser.y);
                 if (hitBlock) {
                     explodeAt(hitBlock.x, hitBlock.y);
@@ -491,23 +988,20 @@
         }
 
         function explodeAt(blockX, blockY) {
-            // Remove blocks in 1-block radius (3x3 area)
             for (let dy = -1; dy <= 1; dy++) {
                 for (let dx = -1; dx <= 1; dx++) {
                     const targetX = blockX + dx;
                     const targetY = blockY + dy;
                     
                     if (targetY >= 0 && targetY < game.currentWorldHeight && 
-                        targetX >= 0 && targetX < WORLD_WIDTH) {
+                        targetX >= 0 && targetX < game.WORLD_WIDTH) {
                         
-                        // Don't destroy shop blocks
                         if (isShopBlock(targetX, targetY)) {
                             continue;
                         }
                         
                         const block = game.terrain[targetY] && game.terrain[targetY][targetX];
                         if (block && block.exists) {
-                            // Don't add to inventory from explosions - just destroy
                             game.terrain[targetY][targetX].exists = false;
                         }
                     }
@@ -525,150 +1019,6 @@
             }
         }
 
-        function renderInventory() {
-            // Semi-transparent overlay
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            const panelWidth = 600;
-            const panelHeight = 400;
-            const panelX = (canvas.width - panelWidth) / 2;
-            const panelY = (canvas.height - panelHeight) / 2;
-            
-            // Main panel
-            ctx.fillStyle = '#333';
-            ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-            ctx.strokeStyle = '#666';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
-            
-            // Title with capacity
-            const currentCount = getCurrentOreCount();
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`INVENTORY (${currentCount}/${game.player.maxInventory})`, canvas.width / 2, panelY + 30);
-            
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'left';
-            let yOffset = 60;
-            
-            // Reset button references
-            game.fuelButton = null;
-            game.upgradeCargoButton = null;
-            game.upgradeHullButton = null;
-            game.bronzeConvertButton = null;
-            game.silverConvertButton = null;
-            game.goldConvertButton = null;
-            game.ammoButton = null;
-            
-            // Bronze ore row
-            ctx.fillStyle = '#CD7F32';
-            ctx.fillText(`Bronze Ore: ${game.player.bronzeOre}`, panelX + 20, panelY + yOffset);
-            
-            let buttonX = panelX + 200;
-            if (game.player.bronzeOre > 0) {
-                game.fuelButton = drawButton(buttonX, panelY + yOffset - 15, 100, 25, 'Make Fuel (+15)', '#006600');
-                buttonX += 110;
-            }
-            if (game.player.bronzeOre >= 3) {
-                game.bronzeConvertButton = drawButton(buttonX, panelY + yOffset - 15, 120, 25, 'Convert to Silver', '#004466');
-            }
-            
-            yOffset += 40;
-            
-            // Silver ore row
-            ctx.fillStyle = '#C0C0C0';
-            ctx.fillText(`Silver Ore: ${game.player.silverOre}`, panelX + 20, panelY + yOffset);
-            
-            buttonX = panelX + 200;
-            if (game.player.silverOre > 0) {
-                game.ammoButton = drawButton(buttonX, panelY + yOffset - 15, 100, 25, 'Make Ammo (1)', '#006600');
-                buttonX += 110;
-            }
-            if (game.player.silverOre >= 3) {
-                game.silverConvertButton = drawButton(buttonX, panelY + yOffset - 15, 120, 25, 'Convert to Gold', '#004466');
-            }
-            
-            yOffset += 40;
-            
-            // Gold ore row
-            ctx.fillStyle = '#FFD700';
-            ctx.fillText(`Gold Ore: ${game.player.goldOre}`, panelX + 20, panelY + yOffset);
-            
-            buttonX = panelX + 200;
-            if (game.player.goldOre > 0) {
-                game.upgradeCargoButton = drawButton(buttonX, panelY + yOffset - 15, 120, 25, 'Upgrade Cargo (+1)', '#006600');
-                buttonX += 130;
-            }
-            if (game.player.goldOre >= 3) {
-                game.goldConvertButton = drawButton(buttonX, panelY + yOffset - 15, 130, 25, 'Convert to Platinum', '#004466');
-            }
-            
-            yOffset += 40;
-            
-            // Platinum ore row
-            ctx.fillStyle = '#E5E4E2';
-            ctx.fillText(`Platinum Ore: ${game.player.platinumOre}`, panelX + 20, panelY + yOffset);
-            
-            yOffset += 80;
-            
-            // Instructions
-            ctx.fillStyle = '#AAA';
-            ctx.textAlign = 'center';
-            ctx.font = '14px Arial';
-            ctx.fillText('Convert 3 of any ore to 1 of the next tier • SPACE to fire laser • Visit SHOP to sell ore • Press I to close', canvas.width / 2, panelY + panelHeight - 20);
-        }
-
-        function drawButton(x, y, width, height, text, color) {
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, width, height);
-            ctx.strokeStyle = color === '#006600' ? '#00AA00' : '#0066AA';
-            ctx.strokeRect(x, y, width, height);
-            
-            ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.fillText(text, x + width/2, y + 17);
-            
-            return { x, y, width, height };
-        }
-
-        function drawStatsOverlay() {
-            // Semi-transparent background for stats
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-            ctx.fillRect(0, 0, canvas.width, 40);
-            
-            // Stats text
-            ctx.fillStyle = 'white';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'left';
-            
-            const fuel = Math.floor(game.player.fuel || 0);
-            const maxFuel = Math.floor(game.player.maxFuel || 100);
-            const hull = Math.floor(game.player.hull || 0);
-            const maxHull = Math.floor(game.player.maxHull || 100);
-            const depth = Math.floor(Math.max(0, (game.player.y - 180) / BLOCK_SIZE));
-            const currentCount = getCurrentOreCount();
-            const maxInventory = game.player.maxInventory || 12;
-            const ammo = game.player.ammo || 0;
-            const credits = game.player.credits || 0;
-            const level = game.currentLevel || 1;
-            
-            ctx.fillText(`Fuel: ${fuel}/${maxFuel}`, 10, 25);
-            ctx.fillText(`Hull: ${hull}/${maxHull}`, 120, 25);
-            ctx.fillText(`Level: ${level}`, 230, 25);
-            ctx.fillText(`Depth: ${depth}m`, 300, 25);
-            ctx.fillText(`Inventory: ${currentCount}/${maxInventory}`, 400, 25);
-            ctx.fillText(`Ammo: ${ammo}`, 560, 25);
-            ctx.fillText(`Credits: ${credits}`, 620, 25);
-            
-            // Also update the HTML elements for consistency
-            document.getElementById('fuel').textContent = `${fuel}/${maxFuel}`;
-            document.getElementById('hull').textContent = `${hull}/${maxHull}`;
-            document.getElementById('depth').textContent = depth;
-            document.getElementById('ore').textContent = `${currentCount}/${maxInventory}`;
-        }
-
         // Game functions
         function isShopBlock(blockX, blockY) {
             return blockY >= game.shop.y && blockY < game.shop.y + game.shop.height && 
@@ -676,11 +1026,11 @@
         }
 
         function getBlockAt(worldX, worldY) {
-            const blockX = Math.floor(worldX / BLOCK_SIZE);
-            const blockY = Math.floor(worldY / BLOCK_SIZE);
+            const blockX = Math.floor(worldX / game.BLOCK_SIZE);
+            const blockY = Math.floor(worldY / game.BLOCK_SIZE);
             
             if (blockY < 0 || blockY >= game.currentWorldHeight || 
-                blockX < 0 || blockX >= WORLD_WIDTH) {
+                blockX < 0 || blockX >= game.WORLD_WIDTH) {
                 return null;
             }
             
@@ -690,15 +1040,13 @@
 
         function removeBlock(blockX, blockY) {
             if (blockY >= 0 && blockY < game.currentWorldHeight && 
-                blockX >= 0 && blockX < WORLD_WIDTH) {
+                blockX >= 0 && blockX < game.WORLD_WIDTH) {
                 
                 const block = game.terrain[blockY] && game.terrain[blockY][blockX];
                 if (block && block.exists) {
-                    // Check inventory space
                     const currentCount = getCurrentOreCount();
                     
                     if (currentCount < game.player.maxInventory) {
-                        // Add ore to inventory
                         if (block.type === 'bronze') {
                             game.player.bronzeOre += 1;
                         } else if (block.type === 'silver') {
@@ -709,6 +1057,7 @@
                             game.player.platinumOre += 1;
                         }
                         updateOreCount();
+                        updateStatsDisplay();
                     }
                     
                     game.terrain[blockY][blockX].exists = false;
@@ -754,7 +1103,6 @@
                     return null;
             }
             
-            // Don't allow drilling shop blocks
             if (targetBlock && targetBlock.type === 'shop') {
                 return null;
             }
@@ -783,9 +1131,9 @@
             if (drillTarget) {
                 player.drilling = true;
                 player.drillDirection = drillDirection;
-                player.drillProgress += 2;
+                player.drillProgress += game.playerStats.drillSpeed;
                 
-                if (player.drillProgress >= 30) {
+                if (player.drillProgress >= game.playerStats.drillTime) {
                     removeBlock(drillTarget.x, drillTarget.y);
                     player.drillProgress = 0;
                     player.fuel = Math.max(0, player.fuel - 0.5);
@@ -799,52 +1147,48 @@
             // Movement
             if (!player.drilling) {
                 if (game.keys['a']) {
-                    player.vx -= 0.25;
+                    player.vx -= game.playerStats.moveAcceleration;
                     player.fuel = Math.max(0, player.fuel - 0.05);
                     player.lastMoveDirection = 'left';
                 }
                 if (game.keys['d']) {
-                    player.vx += 0.25;
+                    player.vx += game.playerStats.moveAcceleration;
                     player.fuel = Math.max(0, player.fuel - 0.05);
                     player.lastMoveDirection = 'right';
                 }
             }
 
             if (game.keys['w']) {
-                player.vy -= 0.4;
-                player.fuel = Math.max(0, player.fuel - 0.048); // Reduced by 40%
+                player.vy -= game.playerStats.thrustPower;
+                player.fuel = Math.max(0, player.fuel - 0.048);
             }
 
             // Physics
-            player.vy += 0.3; // gravity
-            player.vx *= 0.98; // air resistance
+            player.vy += 0.3;
+            player.vx *= 0.98;
             player.vy *= 0.98;
 
-            // Speed limit
             const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
             if (speed > 3) {
                 player.vx = (player.vx / speed) * 3;
                 player.vy = (player.vy / speed) * 3;
             }
 
-            // Move
             const oldX = player.x;
             const oldY = player.y;
 
             player.x += player.vx;
             player.y += player.vy;
 
-            // Bounds
             if (player.x < 0) {
                 player.x = 0;
                 player.vx = 0;
             }
-            if (player.x + player.width > WORLD_WIDTH * BLOCK_SIZE) {
-                player.x = WORLD_WIDTH * BLOCK_SIZE - player.width;
+            if (player.x + player.width > game.WORLD_WIDTH * game.BLOCK_SIZE) {
+                player.x = game.WORLD_WIDTH * game.BLOCK_SIZE - player.width;
                 player.vx = 0;
             }
 
-            // Collision
             if (checkCollision(player.x, oldY, player.width, player.height)) {
                 player.x = oldX;
                 player.vx = 0;
@@ -855,26 +1199,23 @@
                 player.vy = 0;
             }
 
-            // Ground check
             if (getAdjacentBlock('down')) {
                 player.onGround = true;
                 if (player.vy > 0) {
                     player.vy = 0;
                 }
-                player.vx *= 0.92; // friction
+                player.vx *= 0.92;
             } else {
                 player.onGround = false;
             }
 
-            // Camera
             game.camera.y = Math.max(0, player.y - 200);
             
-            // Check for level progression
             checkLevelProgression();
             
-            // Check if player is near shop (for 'E' prompt)
-            const playerCenterX = (player.x + player.width/2) / BLOCK_SIZE;
-            const playerCenterY = (player.y + player.height/2) / BLOCK_SIZE;
+            // Check if player is near shop
+            const playerCenterX = (player.x + player.width/2) / game.BLOCK_SIZE;
+            const playerCenterY = (player.y + player.height/2) / game.BLOCK_SIZE;
             const shopCenterX = game.shop.x + game.shop.width/2;
             const shopCenterY = game.shop.y + game.shop.height/2;
             
@@ -883,307 +1224,97 @@
                 Math.pow(playerCenterY - shopCenterY, 2)
             );
             
-            game.nearShop = distanceToShop <= 3; // Within 3 blocks
+            game.nearShop = distanceToShop <= 3;
+            
+            // Update shop prompt visibility
+            const shopPrompt = document.getElementById('shopPrompt');
+            if (game.nearShop && !game.showShop && !game.showInventory) {
+                shopPrompt.classList.add('show');
+            } else {
+                shopPrompt.classList.remove('show');
+            }
+            
+            updateStatsDisplay();
         }
 
         function render() {
-            // Clear
             ctx.fillStyle = '#001122';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            if (!game.showInventory) {
-                // Draw terrain
-                for (let y = 0; y < game.terrain.length; y++) {
-                    for (let x = 0; x < game.terrain[y].length; x++) {
-                        const block = game.terrain[y][x];
-                        if (block && block.exists) {
-                            const screenX = x * BLOCK_SIZE;
-                            const screenY = y * BLOCK_SIZE - game.camera.y;
+            // Draw terrain
+            for (let y = 0; y < game.terrain.length; y++) {
+                for (let x = 0; x < game.terrain[y].length; x++) {
+                    const block = game.terrain[y][x];
+                    if (block && block.exists) {
+                        const screenX = x * game.BLOCK_SIZE;
+                        const screenY = y * game.BLOCK_SIZE - game.camera.y;
+                        
+                        if (screenY > -game.BLOCK_SIZE && screenY < canvas.height + game.BLOCK_SIZE) {
+                            switch (block.type) {
+                                case 'dirt':
+                                    ctx.fillStyle = '#8B4513';
+                                    break;
+                                case 'bronze':
+                                    ctx.fillStyle = '#CD7F32';
+                                    break;
+                                case 'silver':
+                                    ctx.fillStyle = '#C0C0C0';
+                                    break;
+                                case 'gold':
+                                    ctx.fillStyle = '#FFD700';
+                                    break;
+                                case 'platinum':
+                                    ctx.fillStyle = '#E5E4E2';
+                                    break;
+                                case 'shop':
+                                    ctx.fillStyle = '#00AAFF';
+                                    break;
+                            }
                             
-                            // Only draw visible blocks
-                            if (screenY > -BLOCK_SIZE && screenY < canvas.height + BLOCK_SIZE) {
-                                switch (block.type) {
-                                    case 'dirt':
-                                        ctx.fillStyle = '#8B4513';
-                                        break;
-                                    case 'bronze':
-                                        ctx.fillStyle = '#CD7F32';
-                                        break;
-                                    case 'silver':
-                                        ctx.fillStyle = '#C0C0C0';
-                                        break;
-                                    case 'gold':
-                                        ctx.fillStyle = '#FFD700';
-                                        break;
-                                    case 'platinum':
-                                        ctx.fillStyle = '#E5E4E2';
-                                        break;
-                                    case 'shop':
-                                        ctx.fillStyle = '#00AAFF';
-                                        break;
-                                }
-                                
-                                ctx.fillRect(screenX, screenY, BLOCK_SIZE, BLOCK_SIZE);
-                                ctx.strokeStyle = '#333';
-                                ctx.lineWidth = 1;
-                                ctx.strokeRect(screenX, screenY, BLOCK_SIZE, BLOCK_SIZE);
-                                
-                                // Add "SHOP" text for shop blocks
-                                if (block.type === 'shop') {
-                                    ctx.fillStyle = 'white';
-                                    ctx.font = '10px Arial';
-                                    ctx.textAlign = 'center';
-                                    ctx.fillText('SHOP', screenX + BLOCK_SIZE/2, screenY + BLOCK_SIZE/2 + 3);
-                                }
+                            ctx.fillRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
+                            ctx.strokeStyle = '#333';
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
+                            
+                            if (block.type === 'shop') {
+                                ctx.fillStyle = 'white';
+                                ctx.font = `${Math.floor(game.BLOCK_SIZE * 0.25)}px Arial`;
+                                ctx.textAlign = 'center';
+                                ctx.fillText('SHOP', screenX + game.BLOCK_SIZE/2, screenY + game.BLOCK_SIZE/2 + 3);
                             }
                         }
                     }
                 }
-
-                // Draw player
-                const playerScreenY = game.player.y - game.camera.y;
-                ctx.fillStyle = game.player.fuel > 20 ? '#00FF00' : '#FFAA00';
-                ctx.fillRect(game.player.x, playerScreenY, game.player.width, game.player.height);
-
-                // Draw drilling
-                if (game.player.drilling) {
-                    ctx.fillStyle = '#FF6600';
-                    let drillX = game.player.x;
-                    let drillY = playerScreenY;
-                    
-                    if (game.player.drillDirection === 'down') {
-                        drillX = game.player.x + 2;
-                        drillY = playerScreenY + game.player.height;
-                        ctx.fillRect(drillX, drillY, game.player.width - 4, 4);
-                    } else if (game.player.drillDirection === 'left') {
-                        drillX = game.player.x - 4;
-                        drillY = playerScreenY + 2;
-                        ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
-                    } else if (game.player.drillDirection === 'right') {
-                        drillX = game.player.x + game.player.width;
-                        drillY = playerScreenY + 2;
-                        ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
-                    }
-                }
-
-                // Draw lasers
-                renderLasers();
             }
 
-            // Render inventory if open
-            if (game.showInventory) {
-                renderInventory();
-            }
+            // Draw player
+            const playerScreenY = game.player.y - game.camera.y;
+            ctx.fillStyle = game.player.fuel > 20 ? '#00FF00' : '#FFAA00';
+            ctx.fillRect(game.player.x, playerScreenY, game.player.width, game.player.height);
 
-            // Render shop if open
-            if (game.showShop) {
-                renderShop();
-            }
-
-            // Draw stats overlay at top of screen
-            drawStatsOverlay();
-            
-            // Draw shop prompt if near shop
-            if (game.nearShop && !game.showShop && !game.showInventory) {
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(canvas.width/2 - 80, canvas.height - 100, 160, 30);
-                ctx.strokeStyle = '#666';
-                ctx.strokeRect(canvas.width/2 - 80, canvas.height - 100, 160, 30);
+            // Draw drilling
+            if (game.player.drilling) {
+                ctx.fillStyle = '#FF6600';
+                let drillX = game.player.x;
+                let drillY = playerScreenY;
                 
-                ctx.fillStyle = 'white';
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('Press E to enter shop', canvas.width/2, canvas.height - 82);
-            }
-        }
-
-        // Shop UI System
-        function renderShop() {
-            // Semi-transparent overlay
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            const panelWidth = 600;
-            const panelHeight = 500;
-            const panelX = (canvas.width - panelWidth) / 2;
-            const panelY = (canvas.height - panelHeight) / 2;
-            
-            // Main panel
-            ctx.fillStyle = '#333';
-            ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
-            ctx.strokeStyle = '#666';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(panelX, panelY, panelWidth, panelHeight);
-            
-            // Title
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`SHOP - Credits: ${game.player.credits}`, canvas.width / 2, panelY + 30);
-            
-            // Tab buttons
-            const tabY = panelY + 50;
-            const tabWidth = 100;
-            const tabHeight = 30;
-            
-            // Sell tab
-            ctx.fillStyle = game.shopTab === 'sell' ? '#555' : '#444';
-            ctx.fillRect(panelX + 50, tabY, tabWidth, tabHeight);
-            ctx.strokeStyle = '#666';
-            ctx.strokeRect(panelX + 50, tabY, tabWidth, tabHeight);
-            game.sellTabButton = { x: panelX + 50, y: tabY, width: tabWidth, height: tabHeight };
-            
-            // Buy tab
-            ctx.fillStyle = game.shopTab === 'buy' ? '#555' : '#444';
-            ctx.fillRect(panelX + 160, tabY, tabWidth, tabHeight);
-            ctx.strokeRect(panelX + 160, tabY, tabWidth, tabHeight);
-            game.buyTabButton = { x: panelX + 160, y: tabY, width: tabWidth, height: tabHeight };
-            
-            // Tab labels
-            ctx.fillStyle = 'white';
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('SELL', panelX + 100, tabY + 20);
-            ctx.fillText('BUY', panelX + 210, tabY + 20);
-            
-            // Reset button references
-            resetShopButtons();
-            
-            if (game.shopTab === 'sell') {
-                renderSellTab(panelX, panelY, panelWidth, panelHeight);
-            } else {
-                renderBuyTab(panelX, panelY, panelWidth, panelHeight);
-            }
-            
-            // Instructions
-            ctx.fillStyle = '#AAA';
-            ctx.textAlign = 'center';
-            ctx.font = '14px Arial';
-            ctx.fillText('ESC to close shop • Click outside to close', canvas.width / 2, panelY + panelHeight - 20);
-        }
-
-        function resetShopButtons() {
-            game.sellBronzeButton = null;
-            game.sellSilverButton = null;
-            game.sellGoldButton = null;
-            game.sellPlatinumButton = null;
-            game.sellAllButton = null;
-            game.buyFuelButton = null;
-            game.buyHullRepairButton = null;
-            game.buyMaxFuelButton = null;
-            game.buyMaxHullButton = null;
-        }
-
-        function renderSellTab(panelX, panelY, panelWidth, panelHeight) {
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'left';
-            let yOffset = 120;
-            
-            const prices = { bronze: 1, silver: 3, gold: 10, platinum: 30 };
-            
-            // Bronze ore
-            if (game.player.bronzeOre > 0) {
-                ctx.fillStyle = '#CD7F32';
-                ctx.fillText(`Bronze Ore: ${game.player.bronzeOre} (${prices.bronze} credits each)`, panelX + 20, panelY + yOffset);
-                game.sellBronzeButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Sell One', '#006600');
-                yOffset += 40;
-            }
-            
-            // Silver ore
-            if (game.player.silverOre > 0) {
-                ctx.fillStyle = '#C0C0C0';
-                ctx.fillText(`Silver Ore: ${game.player.silverOre} (${prices.silver} credits each)`, panelX + 20, panelY + yOffset);
-                game.sellSilverButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Sell One', '#006600');
-                yOffset += 40;
-            }
-            
-            // Gold ore
-            if (game.player.goldOre > 0) {
-                ctx.fillStyle = '#FFD700';
-                ctx.fillText(`Gold Ore: ${game.player.goldOre} (${prices.gold} credits each)`, panelX + 20, panelY + yOffset);
-                game.sellGoldButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Sell One', '#006600');
-                yOffset += 40;
-            }
-            
-            // Platinum ore
-            if (game.player.platinumOre > 0) {
-                ctx.fillStyle = '#E5E4E2';
-                ctx.fillText(`Platinum Ore: ${game.player.platinumOre} (${prices.platinum} credits each)`, panelX + 20, panelY + yOffset);
-                game.sellPlatinumButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Sell One', '#006600');
-                yOffset += 40;
-            }
-            
-            // Sell all button
-            const totalOre = getCurrentOreCount();
-            if (totalOre > 0) {
-                const totalValue = game.player.bronzeOre * prices.bronze + 
-                                 game.player.silverOre * prices.silver + 
-                                 game.player.goldOre * prices.gold + 
-                                 game.player.platinumOre * prices.platinum;
-                
-                yOffset += 20;
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.fillText(`Total value: ${totalValue} credits`, canvas.width / 2, panelY + yOffset);
-                game.sellAllButton = drawButton(panelX + 250, panelY + yOffset + 20, 100, 30, 'SELL ALL', '#AA0000');
-            }
-        }
-
-        function renderBuyTab(panelX, panelY, panelWidth, panelHeight) {
-            ctx.font = '16px Arial';
-            ctx.textAlign = 'left';
-            let yOffset = 120;
-            
-            // Fuel refill
-            const missingFuel = Math.ceil(game.player.maxFuel - game.player.fuel);
-            const fuelCost = Math.ceil(missingFuel * 0.05);
-            if (missingFuel > 0) {
-                ctx.fillStyle = 'white';
-                ctx.fillText(`Refill Fuel (${missingFuel} units) - ${fuelCost} credits`, panelX + 20, panelY + yOffset);
-                if (game.player.credits >= fuelCost) {
-                    game.buyFuelButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#006600');
-                } else {
-                    drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#666');
+                if (game.player.drillDirection === 'down') {
+                    drillX = game.player.x + 2;
+                    drillY = playerScreenY + game.player.height;
+                    ctx.fillRect(drillX, drillY, game.player.width - 4, 4);
+                } else if (game.player.drillDirection === 'left') {
+                    drillX = game.player.x - 4;
+                    drillY = playerScreenY + 2;
+                    ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
+                } else if (game.player.drillDirection === 'right') {
+                    drillX = game.player.x + game.player.width;
+                    drillY = playerScreenY + 2;
+                    ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
                 }
-                yOffset += 40;
             }
-            
-            // Hull repair
-            const missingHull = game.player.maxHull - game.player.hull;
-            const hullCost = Math.ceil(missingHull * 1);
-            if (missingHull > 0) {
-                ctx.fillStyle = 'white';
-                ctx.fillText(`Repair Hull (${missingHull} points) - ${hullCost} credits`, panelX + 20, panelY + yOffset);
-                if (game.player.credits >= hullCost) {
-                    game.buyHullRepairButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#006600');
-                } else {
-                    drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#666');
-                }
-                yOffset += 40;
-            }
-            
-            yOffset += 20;
-            ctx.fillStyle = '#AAA';
-            ctx.fillText('UPGRADES:', panelX + 20, panelY + yOffset);
-            yOffset += 30;
-            
-            // Max fuel upgrade
-            ctx.fillStyle = 'white';
-            ctx.fillText(`Upgrade Max Fuel (+20) - 50 credits`, panelX + 20, panelY + yOffset);
-            if (game.player.credits >= 50) {
-                game.buyMaxFuelButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#006600');
-            } else {
-                drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#666');
-            }
-            yOffset += 40;
-            
-            // Max hull upgrade
-            ctx.fillText(`Upgrade Max Hull (+10) - 100 credits`, panelX + 20, panelY + yOffset);
-            if (game.player.credits >= 100) {
-                game.buyMaxHullButton = drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#006600');
-            } else {
-                drawButton(panelX + 450, panelY + yOffset - 15, 100, 25, 'Buy', '#666');
-            }
+
+            // Draw lasers
+            renderLasers();
         }
 
         function gameLoop() {
@@ -1193,8 +1324,12 @@
             requestAnimationFrame(gameLoop);
         }
 
+        // Window resize handler
+        window.addEventListener('resize', resizeCanvas);
+
         // Start the game
-        game.currentWorldHeight = BASE_WORLD_HEIGHT; // Initialize the world height
+        game.currentWorldHeight = game.BASE_WORLD_HEIGHT;
+        resizeCanvas();
         generateTerrain();
         gameLoop();
     </script>
