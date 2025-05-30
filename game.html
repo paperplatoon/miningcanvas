@@ -27,7 +27,7 @@
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
     <div class="controls">
         <strong>Controls:</strong> A/D to move/drill left/right, W to thrust up, S to drill/move down, SPACE to fire laser, E to enter shop, I for inventory
     </div>
@@ -43,12 +43,25 @@
         const ctx = canvas.getContext('2d');
         
         // Simple config
-        const BLOCK_SIZE = 20;
-        const WORLD_WIDTH = 40;
-        const WORLD_HEIGHT = 100;
+        const BLOCK_SIZE = 40;
+        const WORLD_WIDTH = 20;
+        const BASE_WORLD_HEIGHT = 50;
         
         // Game state
         const game = {
+            // Level system
+            currentLevel: 1,
+            currentWorldHeight: BASE_WORLD_HEIGHT,
+            
+            // Ore generation settings
+            oreGeneration: {
+                oreChance: 0.1,        // 10% chance for any ore
+                platinumChance: 0.01,  // 1% of ores are platinum
+                goldChance: 0.03,      // 3% of ores are gold  
+                silverChance: 0.06,    // 6% of ores are silver
+                // Bronze is the remainder (90% of ores)
+            },
+            
             player: {
                 x: 200,
                 y: 100,
@@ -113,17 +126,17 @@
         function generateTerrain() {
             game.terrain = [];
             
-            for (let y = 0; y < WORLD_HEIGHT; y++) {
+            for (let y = 0; y < game.currentWorldHeight; y++) {
                 game.terrain[y] = [];
                 for (let x = 0; x < WORLD_WIDTH; x++) {
                     if (y >= 10) {
                         // Dirt with some ores
                         let blockType = 'dirt';
-                        if (Math.random() < 0.1) {
+                        if (Math.random() < game.oreGeneration.oreChance) {
                             const oreRoll = Math.random();
-                            if (oreRoll < 0.01) blockType = 'platinum';
-                            else if (oreRoll < 0.03) blockType = 'gold';
-                            else if (oreRoll < 0.06) blockType = 'silver';
+                            if (oreRoll < game.oreGeneration.platinumChance) blockType = 'platinum';
+                            else if (oreRoll < game.oreGeneration.goldChance) blockType = 'gold';
+                            else if (oreRoll < game.oreGeneration.silverChance) blockType = 'silver';
                             else blockType = 'bronze';
                         }
                         game.terrain[y][x] = { type: blockType, exists: true };
@@ -313,7 +326,7 @@
 
         // Shop functions
         function sellOre(oreType) {
-            const prices = { bronze: 2, silver: 5, gold: 12, platinum: 30 };
+            const prices = { bronze: 1, silver: 3, gold: 10, platinum: 30 };
             
             if (oreType === 'bronze' && game.player.bronzeOre > 0) {
                 game.player.bronzeOre -= 1;
@@ -397,6 +410,40 @@
             return game.player.bronzeOre + game.player.silverOre + game.player.goldOre + game.player.platinumOre;
         }
 
+        // Level progression system
+        function checkLevelProgression() {
+            const player = game.player;
+            const bottomRow = (game.currentWorldHeight - 1) * BLOCK_SIZE;
+            
+            // Check if player has reached the bottom row
+            if (player.y >= bottomRow) {
+                advanceToNextLevel();
+            }
+        }
+
+        function advanceToNextLevel() {
+            // Increment level
+            game.currentLevel += 1;
+            
+            // Increase world height
+            game.currentWorldHeight = BASE_WORLD_HEIGHT + ((game.currentLevel - 1) * 20);
+            
+            // Reset player to top of new level (near shop)
+            game.player.x = 200;
+            game.player.y = 100;
+            game.player.vx = 0;
+            game.player.vy = 0;
+            
+            // Reset camera
+            game.camera.y = 0;
+            
+            // Generate new terrain for the larger world
+            generateTerrain();
+            
+            // Optional: Could add level-up rewards or notifications here
+            console.log(`Advanced to Level ${game.currentLevel}! World height: ${game.currentWorldHeight}`);
+        }
+
         // Laser System
         function fireLaser() {
             if (game.player.ammo > 0 && !game.showInventory) {
@@ -429,7 +476,7 @@
                 
                 // Check bounds
                 if (laser.x < 0 || laser.x > WORLD_WIDTH * BLOCK_SIZE || 
-                    laser.y < 0 || laser.y > WORLD_HEIGHT * BLOCK_SIZE) {
+                    laser.y < 0 || laser.y > game.currentWorldHeight * BLOCK_SIZE) {
                     game.lasers.splice(i, 1);
                     continue;
                 }
@@ -450,15 +497,15 @@
                     const targetX = blockX + dx;
                     const targetY = blockY + dy;
                     
-                    if (targetY >= 0 && targetY < game.terrain.length && 
-                        targetX >= 0 && targetX < game.terrain[0].length) {
+                    if (targetY >= 0 && targetY < game.currentWorldHeight && 
+                        targetX >= 0 && targetX < WORLD_WIDTH) {
                         
                         // Don't destroy shop blocks
                         if (isShopBlock(targetX, targetY)) {
                             continue;
                         }
                         
-                        const block = game.terrain[targetY][targetX];
+                        const block = game.terrain[targetY] && game.terrain[targetY][targetX];
                         if (block && block.exists) {
                             // Don't add to inventory from explosions - just destroy
                             game.terrain[targetY][targetX].exists = false;
@@ -605,13 +652,15 @@
             const maxInventory = game.player.maxInventory || 12;
             const ammo = game.player.ammo || 0;
             const credits = game.player.credits || 0;
+            const level = game.currentLevel || 1;
             
             ctx.fillText(`Fuel: ${fuel}/${maxFuel}`, 10, 25);
             ctx.fillText(`Hull: ${hull}/${maxHull}`, 120, 25);
-            ctx.fillText(`Depth: ${depth}m`, 230, 25);
-            ctx.fillText(`Inventory: ${currentCount}/${maxInventory}`, 330, 25);
-            ctx.fillText(`Ammo: ${ammo}`, 480, 25);
-            ctx.fillText(`Credits: ${credits}`, 550, 25);
+            ctx.fillText(`Level: ${level}`, 230, 25);
+            ctx.fillText(`Depth: ${depth}m`, 300, 25);
+            ctx.fillText(`Inventory: ${currentCount}/${maxInventory}`, 400, 25);
+            ctx.fillText(`Ammo: ${ammo}`, 560, 25);
+            ctx.fillText(`Credits: ${credits}`, 620, 25);
             
             // Also update the HTML elements for consistency
             document.getElementById('fuel').textContent = `${fuel}/${maxFuel}`;
@@ -630,20 +679,20 @@
             const blockX = Math.floor(worldX / BLOCK_SIZE);
             const blockY = Math.floor(worldY / BLOCK_SIZE);
             
-            if (blockY < 0 || blockY >= game.terrain.length || 
-                blockX < 0 || blockX >= game.terrain[0].length) {
+            if (blockY < 0 || blockY >= game.currentWorldHeight || 
+                blockX < 0 || blockX >= WORLD_WIDTH) {
                 return null;
             }
             
-            const block = game.terrain[blockY][blockX];
+            const block = game.terrain[blockY] && game.terrain[blockY][blockX];
             return (block && block.exists) ? { x: blockX, y: blockY, ...block } : null;
         }
 
         function removeBlock(blockX, blockY) {
-            if (blockY >= 0 && blockY < game.terrain.length && 
-                blockX >= 0 && blockX < game.terrain[0].length) {
+            if (blockY >= 0 && blockY < game.currentWorldHeight && 
+                blockX >= 0 && blockX < WORLD_WIDTH) {
                 
-                const block = game.terrain[blockY][blockX];
+                const block = game.terrain[blockY] && game.terrain[blockY][blockX];
                 if (block && block.exists) {
                     // Check inventory space
                     const currentCount = getCurrentOreCount();
@@ -819,6 +868,9 @@
 
             // Camera
             game.camera.y = Math.max(0, player.y - 200);
+            
+            // Check for level progression
+            checkLevelProgression();
             
             // Check if player is near shop (for 'E' prompt)
             const playerCenterX = (player.x + player.width/2) / BLOCK_SIZE;
@@ -1142,6 +1194,7 @@
         }
 
         // Start the game
+        game.currentWorldHeight = BASE_WORLD_HEIGHT; // Initialize the world height
         generateTerrain();
         gameLoop();
     </script>
