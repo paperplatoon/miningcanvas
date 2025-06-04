@@ -36,36 +36,47 @@ export class Enemy {
   }
 }
 
-export function initEnemies(terrain, level, blockSize) {
+export function initEnemies(terrain, level, blockSize, enemyCount) {
   const rows = terrain.length;
   const cols = terrain[0].length;
-  const segments = [];
-  for (let y = 10; y < rows; y++) {
-    let runStart = null;
-    for (let x = 0; x <= cols; x++) {
-      const empty = x < cols && !terrain[y][x].exists;
-      if (empty && runStart === null) runStart = x;
-      if ((!empty || x === cols) && runStart !== null) {
-        const runLen = x - runStart;
-        if (runLen >= 4) segments.push({ y, start: runStart, end: x - 1 });
-        runStart = null;
+  const enemies = [];
+  
+  for (let i = 0; i < enemyCount; i++) {
+    // Pick a random row in the upper area (1-9 to avoid very top and solid terrain)
+    const y = 10 + Math.floor(Math.random() * (terrain.length-10));
+    
+    // Pick tunnel length (3-5 blocks)
+    const tunnelLength = 3 + Math.floor(Math.random() * 3);
+    const maxStartX = cols - tunnelLength;
+    if (maxStartX <= 0) continue; // Skip if world too narrow
+    
+    let startX = Math.floor(Math.random() * maxStartX);
+    
+    // Avoid shop area (rows 4-5, x 0-1) - shift tunnel if needed
+    if (y >= 4 && y <= 5 && startX < 3) {
+      startX = Math.max(3, startX);
+      if (startX + tunnelLength > cols) continue; // Skip if doesn't fit
+    }
+    
+    // Create the tunnel by clearing blocks
+    for (let x = startX; x < startX + tunnelLength; x++) {
+      if (x >= 0 && x < cols) {
+        terrain[y][x] = { type: 'air', exists: false };
       }
     }
-  }
-  const count = 3 + Math.floor(Math.random() * 4);
-  const enemies = [];
-  for (let i = 0; i < count && segments.length; i++) {
-    const seg = segments[Math.floor(Math.random() * segments.length)];
-    const xBlock = seg.start + Math.floor(Math.random() * (seg.end - seg.start + 1));
+    
+    // Place the enemy in the center of the tunnel
+    const enemyX = startX + Math.floor(tunnelLength / 2);
     const speed = 1 + 0.2 * level;
     enemies.push(new Enemy(
-      xBlock, seg.y,
-      seg.start * blockSize,
-      (seg.end + 1) * blockSize,
+      enemyX, y,
+      startX * blockSize,
+      (startX + tunnelLength) * blockSize,
       speed,
       blockSize
     ));
   }
+  
   return enemies;
 }
 

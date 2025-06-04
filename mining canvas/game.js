@@ -152,7 +152,7 @@ const canvas = document.getElementById('gameCanvas');
                         } else {
                             game.terrain[y][x] = { type: blockType, exists: true };
                         }
-
+        
                     } else if (y >= game.shop.y && y < game.shop.y + game.shop.height && 
                                x >= game.shop.x && x < game.shop.x + game.shop.width) {
                         game.terrain[y][x] = { type: 'shop', exists: true };
@@ -161,7 +161,11 @@ const canvas = document.getElementById('gameCanvas');
                     }
                 }
             }
-            game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE);
+            const enemyCount = game.enemyGeneration.baseEnemyCount + 
+                               Math.floor(Math.random() * game.enemyGeneration.enemyCountVariation) + 
+                               (game.currentLevel - 1) * (game.enemyGeneration.enemyIncreasePerLevel + 
+                               Math.floor(Math.random() * game.enemyGeneration.enemyIncreaseVariation));
+            game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE, enemyCount);
         }
 
         // Input
@@ -606,7 +610,11 @@ const canvas = document.getElementById('gameCanvas');
             game.camera.x = 0;
             game.camera.y = 0;
             generateTerrain();
-            game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE);
+            // const enemyCount = game.enemyGeneration.baseEnemyCount + 
+            //                    Math.floor(Math.random() * game.enemyGeneration.enemyCountVariation) + 
+            //                    (game.currentLevel - 1) * (game.enemyGeneration.enemyIncreasePerLevel + 
+            //                    Math.floor(Math.random() * game.enemyGeneration.enemyIncreaseVariation));
+            // game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE, enemyCount);
             
             console.log(`Advanced to Level ${game.currentLevel}! World height: ${game.currentWorldHeight}`);
         }
