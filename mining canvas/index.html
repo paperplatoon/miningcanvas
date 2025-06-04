@@ -1,0 +1,59 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mining Game - Responsive Version</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <body>
+            <div class="stats-bar">
+              <span class="stat-item">Fuel: <span id="fuel"></span></span>
+              <span class="stat-item">Hull: <span id="hull"></span></span>
+              <span class="stat-item">Level: <span id="level"></span></span>
+              <span class="stat-item">Depth: <span id="depth"></span></span>
+              <span class="stat-item">Inventory: <span id="inventory"></span></span>
+              <span class="stat-item">Ammo: <span id="ammo"></span></span>
+              <span class="stat-item">Credits: <span id="credits"></span></span>
+            </div>
+        
+            <div class="game-container">
+              <canvas id="gameCanvas"></canvas>
+              <div id="shopPrompt" class="shop-prompt">Press E to open shop</div>
+            </div>
+        
+            <!-- Inventory Modal -->
+            <div id="inventoryModal" class="modal-overlay">
+              <div class="modal-content">
+                <h2 class="modal-title">Inventory (<span id="invCount">0/12</span>)</h2>
+                <div id="inventoryContent" class="inventory-grid"></div>
+                <p class="modal-instructions">Press I or click outside to close</p>
+              </div>
+            </div>
+        
+            <!-- Shop Modal -->
+            <div id="shopModal" class="modal-overlay">
+              <div class="modal-content">
+                <h2 class="modal-title">Shop (Credits: <span id="shopCredits">0</span>)</h2>
+                <div class="shop-tabs">
+                  <button id="sellTab" class="tab-button active">Sell</button>
+                  <button id="buyTab" class="tab-button">Buy</button>
+                </div>
+                <div id="shopContent" class="shop-content"></div>
+                <p class="modal-instructions">Press E or click outside to close</p>
+              </div>
+            </div>
+        
+            <div class="controls">WASD = Move / Drill · Space = Fire · I = Inventory · E = Shop</div>
+        
+             <!-- Load main game logic as an ES module -->
+             <script type="module" src="game.js"></script>
+         </body>
+        
+
+    <!-- Load main game logic as an ES module -->
+    <script type="module" src="game.js"></script>
+</body>
+</html>
