@@ -1062,7 +1062,21 @@ const canvas = document.getElementById('gameCanvas');
             // Draw player relative to camera
             const playerScreenX = game.player.x - game.camera.x;
             const playerScreenY = game.player.y - game.camera.y;
-            ctx.fillStyle = game.player.fuel > 20 ? '#00FF00' : '#FFAA00';
+            let playerColor = '#1cc941'
+            if (game.player.fuel/game.player.maxFuel < 0.1 && getCurrentOreCount() == game.player.maxInventory) { 
+                playerColor = '#c850e6'
+            } else if (game.player.fuel/game.player.maxFuel < 0.3 && getCurrentOreCount() == game.player.maxInventory) { 
+                playerColor = '#50b9e6'
+            } else if (getCurrentOreCount() == game.player.maxInventory) {
+                playerColor = '#1168f5'
+            } else if (game.player.fuel/game.player.maxFuel < 0.1) {
+                playerColor = '#e33636'
+            } else if (game.player.fuel/game.player.maxFuel < 0.3) {
+                playerColor = '#FFAA00'
+            } else {
+                playerColor = '#1cc941'
+            }
+            ctx.fillStyle = playerColor
             ctx.fillRect(playerScreenX, playerScreenY, game.player.width, game.player.height);
 
             // Draw drilling relative to camera
