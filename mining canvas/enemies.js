@@ -27,12 +27,18 @@ export class Enemy {
     }
     const p = game.player;
     if (!(p.x + p.width  < this.x ||
-          this.x + this.width < p.x ||
-          p.y + p.height < this.y ||
-          this.y + this.height < p.y)) {
-      p.hull = Math.max(0, p.hull - this.damage);
-      return true;
+        this.x + this.width < p.x ||
+        p.y + p.height < this.y ||
+        this.y + this.height < p.y)) {
+    
+    const now = performance.now();
+    if (now - p.lastHitTime >= 1500) { // 1.5 seconds
+      p.hull = Math.max(0, p.hull - 50);
+      p.lastHitTime = now;
     }
+    
+    return true;
+  }  
     return true;
   }
 

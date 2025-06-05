@@ -104,7 +104,8 @@ const canvas = document.getElementById('gameCanvas');
                 drilling: false,
                 drillProgress: 0,
                 drillDirection: '',
-                lastMoveDirection: 'right'
+                lastMoveDirection: 'right',
+                lastHitTime: 0,
             },
             camera: {
                 x: 0,
