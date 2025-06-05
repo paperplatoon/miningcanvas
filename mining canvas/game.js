@@ -959,23 +959,33 @@ const canvas = document.getElementById('gameCanvas');
             }
         
             // Emergency unstick if stuck on both axes
-            if (collidedX && collidedY) {
-                const nudges = [
-                    { dx: -1, dy: 0 },
-                    { dx: 1, dy: 0 },
-                    { dx: 0, dy: -1 },
-                    { dx: 0, dy: 1 }
-                ];
-                for (const nudge of nudges) {
-                    const newX = player.x + nudge.dx;
-                    const newY = player.y + nudge.dy;
-                    if (!checkCollision(newX, newY, width, height)) {
-                        player.x = newX;
-                        player.y = newY;
-                        break;
+            if ((Math.abs(player.vx) < 0.1 && Math.abs(player.vy) < 0.1) && collidedX && collidedY) {
+                if (game.keys['u'] && collidedX && collidedY) {
+                    const playerBlockX = Math.floor((player.x + player.width / 2) / game.BLOCK_SIZE);
+                    const playerBlockY = Math.floor((player.y + player.height / 2) / game.BLOCK_SIZE);
+                    const maxRadius = 4;
+
+                    for (let r = 1; r <= maxRadius; r++) {
+                        for (let dy = -r; dy <= r; dy++) {
+                            for (let dx = -r; dx <= r; dx++) {
+                                const bx = playerBlockX + dx;
+                                const by = playerBlockY + dy;
+
+                                if (
+                                    bx >= 0 && bx < game.WORLD_WIDTH &&
+                                    by >= 0 && by < game.currentWorldHeight &&
+                                    game.terrain[by][bx] && !game.terrain[by][bx].exists
+                                ) {
+                                    // Snap player to center of air block
+                                    player.x = bx * game.BLOCK_SIZE + (game.BLOCK_SIZE - player.width) / 2;
+                                    player.y = by * game.BLOCK_SIZE + (game.BLOCK_SIZE - player.height) / 2;
+                                    return;
+                                }
+                            }
+                        }
                     }
                 }
-            }
+            } 
         }
         
 
