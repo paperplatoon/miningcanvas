@@ -55,7 +55,7 @@ const canvas = document.getElementById('gameCanvas');
             
             // Player movement and action settings
             playerStats: {
-                moveAcceleration: 0.7,
+                moveAcceleration: 0.5,
                 thrustPower: 0.8,
                 drillSpeed: 1.5,
                 drillTime: 30,
@@ -112,6 +112,8 @@ const canvas = document.getElementById('gameCanvas');
             },
             showInventory: false,
             showShop: false,
+            maxFuelUpgradeCost: 50,
+            MaxHullUpgradeCost: 50,
             shopTab: 'sell',
             nearShop: false,
             terrain: [],
@@ -558,22 +560,24 @@ const canvas = document.getElementById('gameCanvas');
         }
 
         function buyMaxFuelUpgrade() {
-            const upgradeCost = 50;
+            const upgradeCost = game.maxFuelUpgradeCost;
             
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
                 game.player.maxFuel += 20;
+                game.maxFuelUpgradeCost *= 2;
                 updateShopUI();
                 updateStatsDisplay();
             }
         }
 
         function buyMaxHullUpgrade() {
-            const upgradeCost = 100;
+            const upgradeCost = game.MaxHullUpgradeCost;
             
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
-                game.player.maxHull += 10;
+                game.player.maxHull += 50;
+                game.MaxHullUpgradeCost *= 2;
                 updateShopUI();
                 updateStatsDisplay();
             }
@@ -642,11 +646,12 @@ const canvas = document.getElementById('gameCanvas');
                 const laser = game.lasers[i];
 
                 if (checkLaserEnemyCollision(game, laser)) {
-                          game.player.credits += 40;
-                          game.lasers.splice(i, 1);
-                          updateStatsDisplay();
-                          continue;
-                        }
+                        explodeAt(Math.floor(laser.x / game.BLOCK_SIZE), Math.floor(laser.y / game.BLOCK_SIZE));
+                        game.player.credits += 40;
+                        game.lasers.splice(i, 1);
+                        updateStatsDisplay();
+                        continue;
+                }
                 
                 if (!laser.active) {
                     game.lasers.splice(i, 1);
@@ -874,10 +879,10 @@ const canvas = document.getElementById('gameCanvas');
             if (game.keys['s']) {
                 drillTarget = getAdjacentBlock('down');
                 if (drillTarget) drillDirection = 'down';
-            } else if (game.keys['a']) {
+            } else if (game.keys['a'] && getAdjacentBlock('left')) {
                 drillTarget = getAdjacentBlock('left');
                 if (drillTarget) drillDirection = 'left';
-            } else if (game.keys['d']) {
+            } else if (game.keys['d'] && getAdjacentBlock('right')) {
                 drillTarget = getAdjacentBlock('right');
                 if (drillTarget) drillDirection = 'right';
             }
@@ -890,7 +895,7 @@ const canvas = document.getElementById('gameCanvas');
                 if (player.drillProgress >= game.playerStats.drillTime) {
                     removeBlock(drillTarget.x, drillTarget.y);
                     player.drillProgress = 0;
-                    player.fuel = Math.max(0, player.fuel - 0.5);
+                    player.fuel = Math.max(0, player.fuel - 1);
                 }
             } else {
                 player.drilling = false;
@@ -902,19 +907,19 @@ const canvas = document.getElementById('gameCanvas');
             if (!player.drilling) {
                 if (game.keys['a']) {
                     player.vx -= game.playerStats.moveAcceleration;
-                    player.fuel = Math.max(0, player.fuel - 0.05);
+                    player.fuel = Math.max(0, player.fuel - 0.07);
                     player.lastMoveDirection = 'left';
                 }
                 if (game.keys['d']) {
                     player.vx += game.playerStats.moveAcceleration;
-                    player.fuel = Math.max(0, player.fuel - 0.05);
+                    player.fuel = Math.max(0, player.fuel - 0.07);
                     player.lastMoveDirection = 'right';
                 }
             }
 
             if (game.keys['w']) {
                 player.vy -= game.playerStats.thrustPower;
-                player.fuel = Math.max(0, player.fuel - 0.048);
+                player.fuel = Math.max(0, player.fuel - 0.08);
             }
 
             // Physics
@@ -1102,15 +1107,14 @@ const canvas = document.getElementById('gameCanvas');
 
             renderEnemies(game, ctx);
 
-            // Draw lasers
             renderLasers();
             
-            // Draw explosions
             renderExplosions();
         }
 
         function gameLoop() {
             updatePlayer();
+            if (checkGameOver()) return;
             updateLasers();
             updateEnemies(game);
             updateExplosions();
@@ -1118,8 +1122,11 @@ const canvas = document.getElementById('gameCanvas');
             requestAnimationFrame(gameLoop);
         }
 
-        // Window resize handler
-        // Make necessary functions available globally for UI
+        
+
+
+// Window resize handler
+// Make necessary functions available globally for UI
 window.gameAPI = {
     toggleInventory,
     toggleShop,
@@ -1153,6 +1160,16 @@ function initGame() {
     
     // Start game loop
     gameLoop();
+}
+
+function checkGameOver() {
+    if (game.player.hull <= 0 || game.player.fuel <= 0) {
+        const cause = game.player.hull <= 0 ? "hull" : "fuel";
+        alert(`Game Over! You ran out of ${cause}. Click OK to try again.`);
+        location.reload()
+        return true;
+    }
+    return false;
 }
 
 // Ensure DOM is loaded before initializing

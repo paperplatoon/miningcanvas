@@ -1,4 +1,7 @@
 // enemies.js
+
+
+
 export class Enemy {
   constructor(xBlock, yBlock, xMin, xMax, speed, blockSize) {
     this.blockSize = blockSize;
@@ -9,6 +12,7 @@ export class Enemy {
     this.x = xBlock * blockSize;
     this.y = yBlock * blockSize;
     this.vx = speed;
+    this.damage = 50;
   }
 
   update(game) {
@@ -22,8 +26,8 @@ export class Enemy {
           this.x + this.width < p.x ||
           p.y + p.height < this.y ||
           this.y + this.height < p.y)) {
-      p.hull = Math.max(0, p.hull - 50);
-      return false;
+      p.hull = Math.max(0, p.hull - this.damage);
+      return true;
     }
     return true;
   }
@@ -67,7 +71,7 @@ export function initEnemies(terrain, level, blockSize, enemyCount) {
     
     // Place the enemy in the center of the tunnel
     const enemyX = startX + Math.floor(tunnelLength / 2);
-    const speed = 1 + 0.2 * level;
+    const speed = 2 + 0.3 * level;
     enemies.push(new Enemy(
       enemyX, y,
       startX * blockSize,
