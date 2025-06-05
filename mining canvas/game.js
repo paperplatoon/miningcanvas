@@ -12,10 +12,9 @@ const canvas = document.getElementById('gameCanvas');
         // Responsive canvas sizing
         function resizeCanvas() {
             const container = document.querySelector('.game-container');
-            const maxWidth = container.clientWidth - 40; // Account for padding
+            const maxWidth = container.clientWidth - 40;
             const maxHeight = container.clientHeight - 40;
             
-            // Calculate the aspect ratio based on visible blocks
             const aspectRatio = game.VISIBLE_BLOCKS_X / game.VISIBLE_BLOCKS_Y;
             
             let width = maxWidth;
@@ -25,16 +24,48 @@ const canvas = document.getElementById('gameCanvas');
                 height = maxHeight;
                 width = height * aspectRatio;
             }
-            
+        
+            const prevBlockSize = game.BLOCK_SIZE;
+        
+            // === 1. Record block-based center before resize ===
+            const blockCenterX = (game.player.x + game.player.width / 2) / prevBlockSize;
+            const blockCenterY = (game.player.y + game.player.height / 2) / prevBlockSize;
+        
+            // === 2. Resize canvas and recompute block size ===
             canvas.width = width;
             canvas.height = height;
-            
-            // Update block size based on visible blocks, not world width
             game.BLOCK_SIZE = Math.floor(width / game.VISIBLE_BLOCKS_X);
+
+            game.playerStats.moveAcceleration = BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE;
+            game.playerStats.thrustPower = BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE;
+            game.playerStats.drillSpeed = BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE;
+            game.physics.gravity = BASE_PHYSICS.gravity * game.BLOCK_SIZE;
+            game.physics.maxSpeed = BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE;
+
+
+        
+            // === 3. Recompute player pixel position from same block center ===
+            game.player.width = Math.floor(game.BLOCK_SIZE * 0.45);
+            game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
+            game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
+            game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
         }
+        
+        
+
+        const BASE_PLAYER_STATS = {
+            moveAcceleration: 0.018, // per block
+            thrustPower: 0.02,       // per block
+            drillSpeed: 0.04,        // per block
+        };
+        const BASE_PHYSICS = {
+            gravity: 0.012,   // per block
+            maxSpeed: 0.08,   // per block
+        };
 
         // Simple config
         const game = {
+            score: 0,
             BLOCK_SIZE: 40,
             WORLD_WIDTH: 20,
             BASE_WORLD_HEIGHT: 50,
@@ -124,6 +155,9 @@ const canvas = document.getElementById('gameCanvas');
             explosions: [],
             shop: { x: 0, y: 4, width: 2, height: 2 },
 
+            blocksForDirtBlock: 30,
+            currentDirt: 0,
+
             enemies: [],
             enemyGeneration: {
                 baseEnemyCount: 5,        // 5-8 enemies on level 1
@@ -188,6 +222,9 @@ const canvas = document.getElementById('gameCanvas');
             }
             if (e.key === 'Escape') {
                 closeAllModals();
+            }
+            if (e.key.toLowerCase() === 'p') {
+                tryPlaceDirtBlock();
             }
         });
 
@@ -411,14 +448,14 @@ const canvas = document.getElementById('gameCanvas');
                 upgradesTitle.textContent = 'UPGRADES:';
                 content.appendChild(upgradesTitle);
                 
-                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel (+20) - 50 credits`);
+                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel (+20) - ${game.maxFuelUpgradeCost} credits`);
                 const fuelBtn = addButton(fuelUpgradeRow, 'Buy', () => buyMaxFuelUpgrade());
-                if (game.player.credits < 50) fuelBtn.disabled = true;
+                if (game.player.credits < game.maxFuelUpgradeCost) fuelBtn.disabled = true;
                 content.appendChild(fuelUpgradeRow);
                 
-                const hullUpgradeRow = createShopRow(`Upgrade Max Hull (+10) - 100 credits`);
+                const hullUpgradeRow = createShopRow(`Upgrade Max Hull (+50) - ${game.MaxHullUpgradeCost} credits`);
                 const hullBtn = addButton(hullUpgradeRow, 'Buy', () => buyMaxHullUpgrade());
-                if (game.player.credits < 100) hullBtn.disabled = true;
+                if (game.player.credits < game.MaxHullUpgradeCost) hullBtn.disabled = true;
                 content.appendChild(hullUpgradeRow);
             }
         }
@@ -448,6 +485,10 @@ const canvas = document.getElementById('gameCanvas');
             document.getElementById('inventory').textContent = `${getCurrentOreCount()}/${game.player.maxInventory}`;
             document.getElementById('ammo').textContent = game.player.ammo;
             document.getElementById('credits').textContent = game.player.credits;
+            let dirtString = (game.currentDirt == game.blocksForDirtBlock) ? 'drop dirt with [p]' : game.currentDirt + "/" + game.blocksForDirtBlock
+            document.getElementById('dirtCount').textContent = dirtString;
+            document.getElementById('score').textContent = `${game.score}`;
+
         }
 
         // Inventory functions
@@ -565,7 +606,8 @@ const canvas = document.getElementById('gameCanvas');
             
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
-                game.player.maxFuel += 20;
+                game.player.maxFuel += 50;
+                game.player.fuel = game.player.maxFuel
                 game.maxFuelUpgradeCost *= 2;
                 updateShopUI();
                 updateStatsDisplay();
@@ -579,6 +621,7 @@ const canvas = document.getElementById('gameCanvas');
                 game.player.credits -= upgradeCost;
                 game.player.maxHull += 50;
                 game.MaxHullUpgradeCost *= 2;
+                game.player.hull = game.player.maxHull
                 updateShopUI();
                 updateStatsDisplay();
             }
@@ -623,6 +666,27 @@ const canvas = document.getElementById('gameCanvas');
             
             console.log(`Advanced to Level ${game.currentLevel}! World height: ${game.currentWorldHeight}`);
         }
+
+        function tryPlaceDirtBlock() {
+            if (game.currentDirt < game.blocksForDirtBlock) return;
+        
+            const centerX = game.player.x + game.player.width / 2;
+            const footY = game.player.y + game.player.height;
+        
+            const belowX = Math.floor(centerX / game.BLOCK_SIZE);
+            const belowY = Math.floor(footY / game.BLOCK_SIZE) + 1;
+        
+            if (belowY < game.currentWorldHeight &&
+                belowX >= 0 && belowX < game.WORLD_WIDTH &&
+                game.terrain[belowY][belowX] &&
+                !game.terrain[belowY][belowX].exists) {
+                
+                game.terrain[belowY][belowX] = { type: 'dirt', exists: true };
+                game.currentDirt = 0;
+            }
+        }
+        
+        
 
         // Laser System
         function fireLaser() {
@@ -804,17 +868,25 @@ const canvas = document.getElementById('gameCanvas');
                 
                 const block = game.terrain[blockY] && game.terrain[blockY][blockX];
                 if (block && block.exists) {
-                    const currentCount = getCurrentOreCount();
+                    if (block.type === 'dirt') {
+                        game.currentDirt = Math.min(game.blocksForDirtBlock, game.currentDirt + 1);
+                        game.score += 1;
+                    }
                     
+                    const currentCount = getCurrentOreCount();
                     if (currentCount < game.player.maxInventory) {
                         if (block.type === 'bronze') {
                             game.player.bronzeOre += 1;
+                            game.score += 5;
                         } else if (block.type === 'silver') {
                             game.player.silverOre += 1;
+                            game.score += 10;
                         } else if (block.type === 'gold') {
                             game.player.goldOre += 1;
+                            game.score += 20;
                         } else if (block.type === 'platinum') {
                             game.player.platinumOre += 1;
+                            game.score += 50;
                         }
                         updateOreCount();
                         updateStatsDisplay();
@@ -869,6 +941,43 @@ const canvas = document.getElementById('gameCanvas');
             
             return targetBlock;
         }
+
+        function applyCollisionAndUnstick(player, oldX, oldY, width, height) {
+            let collidedX = false;
+            let collidedY = false;
+        
+            if (checkCollision(player.x, oldY, width, height)) {
+                player.x = oldX;
+                player.vx = 0;
+                collidedX = true;
+            }
+        
+            if (checkCollision(oldX, player.y, width, height)) {
+                player.y = oldY;
+                player.vy = 0;
+                collidedY = true;
+            }
+        
+            // Emergency unstick if stuck on both axes
+            if (collidedX && collidedY) {
+                const nudges = [
+                    { dx: -1, dy: 0 },
+                    { dx: 1, dy: 0 },
+                    { dx: 0, dy: -1 },
+                    { dx: 0, dy: 1 }
+                ];
+                for (const nudge of nudges) {
+                    const newX = player.x + nudge.dx;
+                    const newY = player.y + nudge.dy;
+                    if (!checkCollision(newX, newY, width, height)) {
+                        player.x = newX;
+                        player.y = newY;
+                        break;
+                    }
+                }
+            }
+        }
+        
 
         function updatePlayer() {
             const player = game.player;
@@ -949,15 +1058,8 @@ const canvas = document.getElementById('gameCanvas');
                 player.vx = 0;
             }
 
-            if (checkCollision(player.x, oldY, player.width, player.height)) {
-                player.x = oldX;
-                player.vx = 0;
-            }
-            
-            if (checkCollision(oldX, player.y, player.width, player.height)) {
-                player.y = oldY;
-                player.vy = 0;
-            }
+            applyCollisionAndUnstick(player, oldX, oldY, player.width, player.height);
+
 
             if (getAdjacentBlock('down')) {
                 player.onGround = true;

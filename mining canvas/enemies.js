@@ -116,6 +116,7 @@ export function checkLaserEnemyCollision(game, laser) {
           laser.y + 2 > e.y + e.height ||
           e.y > laser.y + 2)) {
       game.enemies.splice(i,1);
+      game.score += 50;
       return true;
     }
   }
