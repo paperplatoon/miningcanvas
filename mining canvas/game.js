@@ -879,10 +879,10 @@ const canvas = document.getElementById('gameCanvas');
             if (game.keys['s']) {
                 drillTarget = getAdjacentBlock('down');
                 if (drillTarget) drillDirection = 'down';
-            } else if (game.keys['a'] && getAdjacentBlock('left')) {
+            } else if (game.keys['a'] && game.player.onGround && getAdjacentBlock('left')) {
                 drillTarget = getAdjacentBlock('left');
                 if (drillTarget) drillDirection = 'left';
-            } else if (game.keys['d'] && getAdjacentBlock('right')) {
+            } else if (game.keys['d'] && game.player.onGround && getAdjacentBlock('right')) {
                 drillTarget = getAdjacentBlock('right');
                 if (drillTarget) drillDirection = 'right';
             }

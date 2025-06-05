@@ -17,9 +17,13 @@ export class Enemy {
 
   update(game) {
     this.x += this.vx;
-    if (this.x < this.xMin || this.x + this.width > this.xMax) {
-      this.vx *= -1;
-      this.x = Math.max(this.xMin, Math.min(this.x, this.xMax - this.width));
+    const blockX = Math.floor((this.x + (this.vx > 0 ? this.width : -1)) / this.blockSize);
+    const blockY = Math.floor(this.y / this.blockSize);
+    const hitBlock = game.terrain[blockY] && game.terrain[blockY][blockX];
+
+    if (hitBlock && hitBlock.exists) {
+    this.vx *= -1;
+    this.x += this.vx; // back off to avoid sticking
     }
     const p = game.player;
     if (!(p.x + p.width  < this.x ||
