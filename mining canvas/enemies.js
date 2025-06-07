@@ -45,8 +45,13 @@ export class Enemy {
   render(ctx, cameraX, cameraY) {
     const sx = this.x - cameraX;
     const sy = this.y - cameraY;
-    ctx.fillStyle = '#FF0000';
-    ctx.fillRect(sx, sy, this.width, this.height);
+    const img = window.SPRITE_IMAGES.enemy;
+    if (img) {
+      ctx.drawImage(img, sx, sy, this.width, this.height);
+    } else {                      // fallback while loading
+      ctx.fillStyle = '#FF0000';
+      ctx.fillRect(sx, sy, this.width, this.height);
+    }
   }
 }
 

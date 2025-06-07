@@ -5,15 +5,250 @@ import {
   checkLaserEnemyCollision
 } from './enemies.js';
 
+const SPRITES = {
+    dirt:      'img/dirt.png',
+    bronze:    'img/bronze.png',
+    silver:    'img/silver.png',
+    gold:      'img/gold.png',
+    platinum:  'img/diamond.png',
+    amethyst:  'img/amethyst.png',
+    ruby:  'img/ruby.png',     // platinum ore uses the diamond sprite
+    player:    'img/robot3.png',
+    enemy:     'img/enemy1.png'
+};
+const SPRITE_IMAGES = {};
+function loadSprites(done) {
+    let loaded = 0, needed = Object.keys(SPRITES).length;
+
+    for (const [key, src] of Object.entries(SPRITES)) {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => { if (++loaded === needed) { window.SPRITE_IMAGES = SPRITE_IMAGES; done(); } };
+        SPRITE_IMAGES[key] = img;
+    }
+}
+function drawCroppedSquare(img, dx, dy, size, ctx) {
+    if (!img) return;                        // sprite still loading
+    const side = Math.min(img.width, img.height);
+    const sx = (img.width  - side) / 2;      // center‑crop
+    const sy = (img.height - side) / 2;
+    ctx.drawImage(img, sx, sy, side, side,   // src rect (crop)
+                  dx, dy, size, size);       // dest rect (fills block)
+  }
+
+  /* ------------------------------------------------------------------
+   Returns a hex colour (tint) representing player status,
+   or null for “normal” (no tint).  Logic mirrors the old version.
+-------------------------------------------------------------------*/
+    function getPlayerTint(game) {
+        const fuelPct   = game.player.fuel / game.player.maxFuel;
+        const fullInv   = getCurrentOreCount() === game.player.maxInventory;
+
+        if (fuelPct < 0.10 && fullInv) return '#c850e6';   // critical fuel + full inv
+        if (fuelPct < 0.30 && fullInv) return '#50b9e6';   // low fuel + full inv
+        if (fullInv)                    return '#1168f5';   // inventory full
+        if (fuelPct < 0.10)             return '#e33636';   // critical fuel
+        if (fuelPct < 0.30)             return '#FFAA00';   // low fuel
+        return null;                                      // normal
+    }
+
+    /* Draws `img` tinted with `hexColour` (string like '#FFAA00').
+   Uses one reusable off‑screen canvas so allocation cost is tiny. */
+// function drawTinted(ctx, img, hexColour, dx, dy, dw, dh, alpha = 0.65) {
+//     if (!hexColour) {                       // no tint → normal draw
+//         ctx.drawImage(img, dx, dy, dw, dh);
+//         return;
+//     }
+//     // ── prepare / resize the off‑screen canvas once ──
+//     const tintCanvas = drawTinted.canvas || (drawTinted.canvas = document.createElement('canvas'));
+//     if (tintCanvas.width  !== img.width)  tintCanvas.width  = img.width;
+//     if (tintCanvas.height !== img.height) tintCanvas.height = img.height;
+//     const tctx = tintCanvas.getContext('2d');
+
+//     // ── draw sprite then overlay colour clipped to sprite alpha ──
+//     tctx.clearRect(0, 0, tintCanvas.width, tintCanvas.height);
+//     tctx.drawImage(img, 0, 0);              // base pixels
+//     tctx.globalCompositeOperation = 'source-atop';
+//     tctx.fillStyle = hexColour;
+//     tctx.globalAlpha = alpha;               // tint strength
+//     tctx.fillRect(0, 0, tintCanvas.width, tintCanvas.height);
+//     tctx.globalCompositeOperation = 'source-over';  // reset
+
+//     ctx.drawImage(tintCanvas, dx, dy, dw, dh);      // to main canvas
+// }
+
+function drawTinted(ctx, img, hexColour, dx, dy, dw, dh, alpha = 0.65) {
+    if (!hexColour) {                         // normal draw
+        ctx.drawImage(img, dx, dy, dw, dh);
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // 1. create / reuse off‑screen canvas sized to destination
+    // ------------------------------------------------------------
+    const tintCanvas = drawTinted.canvas || (drawTinted.canvas = document.createElement('canvas'));
+    if (tintCanvas.width !== dw)  tintCanvas.width  = dw;
+    if (tintCanvas.height !== dh) tintCanvas.height = dh;
+    const tctx = tintCanvas.getContext('2d');
+
+    // ------------------------------------------------------------
+    // 2. paint solid colour, then mask it with sprite alpha only
+    //    result = sprite‑shaped blob in the chosen colour
+    // ------------------------------------------------------------
+    tctx.clearRect(0, 0, dw, dh);
+
+    // 2‑a: solid tint rectangle
+    tctx.fillStyle   = hexColour;
+    tctx.globalAlpha = alpha;                 // tint strength
+    tctx.fillRect(0, 0, dw, dh);
+
+    // 2‑b: keep tint **only** where the sprite is opaque
+    tctx.globalCompositeOperation = 'destination-in';
+    tctx.drawImage(img, 0, 0, dw, dh);
+
+    // reset for next use
+    tctx.globalCompositeOperation = 'source-over';
+    tctx.globalAlpha = 1;
+
+    // ------------------------------------------------------------
+    // 3. blit tinted sprite onto main canvas
+    // ------------------------------------------------------------
+    ctx.drawImage(tintCanvas, dx, dy);
+}
+
+
+// Simple config
+const game = {
+    score: 0,
+    BLOCK_SIZE: 40,
+    WORLD_WIDTH: 20,
+    BASE_WORLD_HEIGHT: 50,
+    VISIBLE_BLOCKS_X: 12,  // How many blocks wide the viewport is
+    VISIBLE_BLOCKS_Y: 10,  // How many blocks tall the viewport is
+    
+    // Level system
+    currentLevel: 1,
+    currentWorldHeight: 50,
+
+    BASE_PHYSICS: {
+        gravity: 0.012,   // per block
+        maxSpeed: 0.08,   // per block
+    },
+
+    BASE_PLAYER_STATS: {
+        moveAcceleration: 0.018, // per block
+        thrustPower: 0.02,       // per block
+        drillSpeed: 0.04,        // per block
+    },
+    
+    // Ore generation settings
+    oreGeneration: {
+        oreChance: 0.2,
+        rubyChance: 0.01,
+        amethystChance: 0.04,
+        platinumChance: 0.1,
+        goldChance: 0.3,
+        silverChance: 0.9,
+    },
+    
+    // Player movement and action settings
+    playerStats: {
+        moveAcceleration: 0.5,
+        thrustPower: 0.8,
+        drillSpeed: 1.5,
+        drillTime: 30,
+    },
+
+    physics: {
+        gravity: 0.5,              // Was 0.3 - higher = fall faster
+        airFriction: 0.96,         // Was 0.98 - lower = less air resistance  
+        groundFriction: 0.85,      // Was 0.92 - lower = less ground friction
+        maxSpeed: 5,               // Was 3 - higher = faster movement
+    },
+    
+    // Shop pricing settings
+    shopPricing: {
+        fuelCostModifier: 0.05,
+        hullCostModifier: 1.0,
+    },
+
+    orePrices: {
+        bronze: 5, 
+        silver: 10, 
+        gold: 20, 
+        platinum: 50,
+        amethyst: 150,
+        ruby: 400
+    },
+    
+    player: {
+        x: 100,  // Start more centered in viewport
+        y: 100,
+        vx: 0,
+        vy: 0,
+        width: 18,
+        height: 18,
+        fuel: 100,
+        maxFuel: 100,
+        hull: 100,
+        maxHull: 100,
+        ore: 0,
+        bronzeOre: 0,
+        silverOre: 0,
+        goldOre: 0,
+        platinumOre: 0,
+        amethystOre: 0,
+        rubyOre: 0,
+        maxInventory: 12,
+        ammo: 5,
+        credits: 0,
+        onGround: false,
+        drilling: false,
+        drillProgress: 0,
+        drillDirection: '',
+        lastMoveDirection: 'right',
+        lastHitTime: 0,
+    },
+    camera: {
+        x: 0,
+        y: 0
+    },
+    showInventory: false,
+    showShop: false,
+    maxFuelUpgradeCost: 50,
+    MaxHullUpgradeCost: 50,
+    shopTab: 'sell',
+    nearShop: false,
+    terrain: [],
+    keys: {},
+    lastTime: 0,
+    lasers: [],
+    explosions: [],
+    shop: { x: 0, y: 4, width: 2, height: 2 },
+
+    blocksForDirtBlock: 30,
+    currentDirt: 0,
+
+    enemies: [],
+    enemyGeneration: {
+        baseEnemyCount: 5,        // 5-8 enemies on level 1
+        enemyCountVariation: 4,   // Random 0-3 additional  
+        enemyIncreasePerLevel: 2, // Base increase per level
+        enemyIncreaseVariation: 2, // Random 0-1 additional increase
+    },
+};
+
+
 
 const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // Responsive canvas sizing
         function resizeCanvas() {
             const container = document.querySelector('.game-container');
-            const maxWidth = container.clientWidth - 40;
-            const maxHeight = container.clientHeight - 40;
+            
+            // Use full container size, minus a small margin for borders
+            const maxWidth = container.clientWidth - 4;  // Was 40, now just 4 for border
+            const maxHeight = container.clientHeight - 4;  // Was 40, now just 4 for border
             
             const aspectRatio = game.VISIBLE_BLOCKS_X / game.VISIBLE_BLOCKS_Y;
             
@@ -27,145 +262,28 @@ const canvas = document.getElementById('gameCanvas');
         
             const prevBlockSize = game.BLOCK_SIZE;
         
-            // === 1. Record block-based center before resize ===
+            // Record block-based center before resize
             const blockCenterX = (game.player.x + game.player.width / 2) / prevBlockSize;
             const blockCenterY = (game.player.y + game.player.height / 2) / prevBlockSize;
         
-            // === 2. Resize canvas and recompute block size ===
+            // Resize canvas and recompute block size
             canvas.width = width;
             canvas.height = height;
             game.BLOCK_SIZE = Math.floor(width / game.VISIBLE_BLOCKS_X);
-
-            game.playerStats.moveAcceleration = BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE;
-            game.playerStats.thrustPower = BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE;
-            game.playerStats.drillSpeed = BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE;
-            game.physics.gravity = BASE_PHYSICS.gravity * game.BLOCK_SIZE;
-            game.physics.maxSpeed = BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE;
-
-
         
-            // === 3. Recompute player pixel position from same block center ===
+            // Scale all physics values with the new block size
+            game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE;
+            game.playerStats.thrustPower = game.BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE;
+            game.playerStats.drillSpeed = game.BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE;
+            game.physics.gravity = game.BASE_PHYSICS.gravity * game.BLOCK_SIZE;
+            game.physics.maxSpeed = game.BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE;
+        
+            // Recompute player pixel position from same block center
             game.player.width = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
             game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
         }
-        
-        
-
-        const BASE_PLAYER_STATS = {
-            moveAcceleration: 0.018, // per block
-            thrustPower: 0.02,       // per block
-            drillSpeed: 0.04,        // per block
-        };
-        const BASE_PHYSICS = {
-            gravity: 0.012,   // per block
-            maxSpeed: 0.08,   // per block
-        };
-
-        // Simple config
-        const game = {
-            score: 0,
-            BLOCK_SIZE: 40,
-            WORLD_WIDTH: 20,
-            BASE_WORLD_HEIGHT: 50,
-            VISIBLE_BLOCKS_X: 12,  // How many blocks wide the viewport is
-            VISIBLE_BLOCKS_Y: 10,  // How many blocks tall the viewport is
-            
-            // Level system
-            currentLevel: 1,
-            currentWorldHeight: 50,
-            
-            // Ore generation settings
-            oreGeneration: {
-                oreChance: 0.2,
-                platinumChance: 0.01,
-                goldChance: 0.04,
-                silverChance: 0.08,
-            },
-            
-            // Player movement and action settings
-            playerStats: {
-                moveAcceleration: 0.5,
-                thrustPower: 0.8,
-                drillSpeed: 1.5,
-                drillTime: 30,
-            },
-
-            physics: {
-                gravity: 0.5,              // Was 0.3 - higher = fall faster
-                airFriction: 0.96,         // Was 0.98 - lower = less air resistance  
-                groundFriction: 0.85,      // Was 0.92 - lower = less ground friction
-                maxSpeed: 5,               // Was 3 - higher = faster movement
-            },
-            
-            // Shop pricing settings
-            shopPricing: {
-                fuelCostModifier: 0.05,
-                hullCostModifier: 1.0,
-            },
-
-            orePrices: {
-                bronze: 5, 
-                silver: 10, 
-                gold: 20, 
-                platinum: 50 
-            },
-            
-            player: {
-                x: 100,  // Start more centered in viewport
-                y: 100,
-                vx: 0,
-                vy: 0,
-                width: 18,
-                height: 18,
-                fuel: 100,
-                maxFuel: 100,
-                hull: 100,
-                maxHull: 100,
-                ore: 0,
-                bronzeOre: 0,
-                silverOre: 0,
-                goldOre: 0,
-                platinumOre: 0,
-                maxInventory: 12,
-                ammo: 5,
-                credits: 0,
-                onGround: false,
-                drilling: false,
-                drillProgress: 0,
-                drillDirection: '',
-                lastMoveDirection: 'right',
-                lastHitTime: 0,
-            },
-            camera: {
-                x: 0,
-                y: 0
-            },
-            showInventory: false,
-            showShop: false,
-            maxFuelUpgradeCost: 50,
-            MaxHullUpgradeCost: 50,
-            shopTab: 'sell',
-            nearShop: false,
-            terrain: [],
-            keys: {},
-            lastTime: 0,
-            lasers: [],
-            explosions: [],
-            shop: { x: 0, y: 4, width: 2, height: 2 },
-
-            blocksForDirtBlock: 30,
-            currentDirt: 0,
-
-            enemies: [],
-            enemyGeneration: {
-                baseEnemyCount: 5,        // 5-8 enemies on level 1
-                enemyCountVariation: 4,   // Random 0-3 additional  
-                enemyIncreasePerLevel: 2, // Base increase per level
-                enemyIncreaseVariation: 2, // Random 0-1 additional increase
-            },
-        };
 
         // Create simple terrain
         function generateTerrain() {
@@ -181,9 +299,12 @@ const canvas = document.getElementById('gameCanvas');
                             game.terrain[y][x] = { type: 'air', exists: false };
                         } else if (blockChance < game.oreGeneration.oreChance) {
                             const oreRoll = Math.random();
-                            if (oreRoll < game.oreGeneration.platinumChance) blockType = 'platinum';
-                            else if (oreRoll < game.oreGeneration.goldChance) blockType = 'gold';
-                            else if (oreRoll < game.oreGeneration.silverChance) blockType = 'silver';
+                            let depth = (y/game.currentWorldHeight)
+                            if ((oreRoll < game.oreGeneration.rubyChance * depth) && (depth >= 0.8)) blockType = 'ruby';
+                            else if((oreRoll < game.oreGeneration.amethystChance * depth) && (depth >= 0.6)) blockType = 'amethyst';
+                            else if((oreRoll < game.oreGeneration.platinumChance * depth) && (depth >= 0.4)) blockType = 'platinum';
+                            else if (oreRoll < game.oreGeneration.goldChance*depth) blockType = 'gold';
+                            else if (oreRoll < game.oreGeneration.silverChance*depth) blockType = 'silver';
                             else blockType = 'bronze';
                             game.terrain[y][x] = { type: blockType, exists: true };
                         } else {
@@ -277,21 +398,6 @@ const canvas = document.getElementById('gameCanvas');
             }
         });
 
-        // Shop tabs
-        document.getElementById('sellTab').addEventListener('click', () => {
-            game.shopTab = 'sell';
-            document.getElementById('sellTab').classList.add('active');
-            document.getElementById('buyTab').classList.remove('active');
-            updateShopUI();
-        });
-
-        document.getElementById('buyTab').addEventListener('click', () => {
-            game.shopTab = 'buy';
-            document.getElementById('buyTab').classList.add('active');
-            document.getElementById('sellTab').classList.remove('active');
-            updateShopUI();
-        });
-
         // Inventory UI
         function updateInventoryUI() {
             const currentCount = getCurrentOreCount();
@@ -327,19 +433,22 @@ const canvas = document.getElementById('gameCanvas');
             // Gold ore
             if (game.player.goldOre > 0 || true) {
                 const row = createInventoryRow('Gold Ore', game.player.goldOre, 'gold');
-                if (game.player.goldOre > 0) {
-                    addButton(row, 'Upgrade Cargo (+1)', () => upgradeInventory());
-                }
-                if (game.player.goldOre >= 3) {
-                    addButton(row, 'Convert to Platinum', () => convertOre('gold', 'platinum'), 'convert');
-                }
                 content.appendChild(row);
             }
-            
-            // Platinum ore
             const platRow = createInventoryRow('Platinum Ore', game.player.platinumOre, 'platinum');
+            
+            if (game.player.amethystOre > 0 || true) {
+                const row = createInventoryRow('Amethyst Ore', game.player.amethystOre, 'amethyst');
+                content.appendChild(row);
+            }
+            if (game.player.rubyOre > 0 || true) {
+                const row = createInventoryRow('Ruby Ore', game.player.rubyOre, 'ruby');
+                content.appendChild(row);
+            }
             content.appendChild(platRow);
         }
+
+
 
         function createInventoryRow(label, count, oreType) {
             const row = document.createElement('div');
@@ -375,7 +484,6 @@ const canvas = document.getElementById('gameCanvas');
             const content = document.getElementById('shopContent');
             content.innerHTML = '';
             
-            if (game.shopTab === 'sell') {
                 const prices = {...game.orePrices};
                 
                 if (game.player.bronzeOre > 0) {
@@ -401,13 +509,28 @@ const canvas = document.getElementById('gameCanvas');
                     addButton(row, 'Sell One', () => sellOre('platinum'));
                     content.appendChild(row);
                 }
+
+                if (game.player.amethystOre > 0) {
+                    const row = createShopRow(`Amethyst Ore: ${game.player.amethystOre} (${prices.amethyst} credits each)`, 'platinum');
+                    addButton(row, 'Sell One', () => sellOre('amethyst'));
+                    content.appendChild(row);
+                }
+
+                if (game.player.rubyOre > 0) {
+                    const row = createShopRow(`Ruby Ore: ${game.player.rubyOre} (${prices.ruby} credits each)`, 'platinum');
+                    addButton(row, 'Sell One', () => sellOre('ruby'));
+                    content.appendChild(row);
+                }
                 
                 const totalOre = getCurrentOreCount();
                 if (totalOre > 0) {
                     const totalValue = game.player.bronzeOre * prices.bronze + 
                                      game.player.silverOre * prices.silver + 
                                      game.player.goldOre * prices.gold + 
-                                     game.player.platinumOre * prices.platinum;
+                                     game.player.platinumOre * prices.platinum +
+                                     game.player.amethystOre * prices.amethyst +
+                                     game.player.rubyOre * prices.ruby
+                                     ;
                     
                     const totalRow = document.createElement('div');
                     totalRow.style.textAlign = 'center';
@@ -422,12 +545,11 @@ const canvas = document.getElementById('gameCanvas');
                     
                     content.appendChild(totalRow);
                 }
-            } else {
-                // Buy tab
+
                 const missingFuel = Math.ceil(game.player.maxFuel - game.player.fuel);
                 const fuelCost = Math.ceil(missingFuel * game.shopPricing.fuelCostModifier);
                 if (missingFuel > 0) {
-                    const row = createShopRow(`Refill Fuel (${missingFuel} units) - ${fuelCost} credits`);
+                    const row = createShopRow(`Refill Fuel - ${fuelCost} credits`);
                     const btn = addButton(row, 'Buy', () => buyFuel());
                     if (game.player.credits < fuelCost) btn.disabled = true;
                     content.appendChild(row);
@@ -436,7 +558,7 @@ const canvas = document.getElementById('gameCanvas');
                 const missingHull = game.player.maxHull - game.player.hull;
                 const hullCost = Math.ceil(missingHull * game.shopPricing.hullCostModifier);
                 if (missingHull > 0) {
-                    const row = createShopRow(`Repair Hull (${missingHull} points) - ${hullCost} credits`);
+                    const row = createShopRow(`Repair Hull - ${hullCost} credits`);
                     const btn = addButton(row, 'Buy', () => buyHullRepair());
                     if (game.player.credits < hullCost) btn.disabled = true;
                     content.appendChild(row);
@@ -448,17 +570,16 @@ const canvas = document.getElementById('gameCanvas');
                 upgradesTitle.textContent = 'UPGRADES:';
                 content.appendChild(upgradesTitle);
                 
-                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel (+20) - ${game.maxFuelUpgradeCost} credits`);
+                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel - ${game.maxFuelUpgradeCost} credits`);
                 const fuelBtn = addButton(fuelUpgradeRow, 'Buy', () => buyMaxFuelUpgrade());
                 if (game.player.credits < game.maxFuelUpgradeCost) fuelBtn.disabled = true;
                 content.appendChild(fuelUpgradeRow);
                 
-                const hullUpgradeRow = createShopRow(`Upgrade Max Hull (+50) - ${game.MaxHullUpgradeCost} credits`);
+                const hullUpgradeRow = createShopRow(`Upgrade Max Hull - ${game.MaxHullUpgradeCost} credits`);
                 const hullBtn = addButton(hullUpgradeRow, 'Buy', () => buyMaxHullUpgrade());
                 if (game.player.credits < game.MaxHullUpgradeCost) hullBtn.disabled = true;
                 content.appendChild(hullUpgradeRow);
             }
-        }
 
         function createShopRow(text, oreType = '') {
             const row = document.createElement('div');
@@ -478,17 +599,72 @@ const canvas = document.getElementById('gameCanvas');
 
         // Update stats display
         function updateStatsDisplay() {
-            document.getElementById('fuel').textContent = `${Math.floor(game.player.fuel)}/${Math.floor(game.player.maxFuel)}`;
-            document.getElementById('hull').textContent = `${Math.floor(game.player.hull)}/${Math.floor(game.player.maxHull)}`;
+            // Update text values in score/level section
             document.getElementById('level').textContent = game.currentLevel;
-            document.getElementById('depth').textContent = Math.floor(Math.max(0, (game.player.y - 180) / game.BLOCK_SIZE));
-            document.getElementById('inventory').textContent = `${getCurrentOreCount()}/${game.player.maxInventory}`;
+            document.getElementById('score').textContent = game.score;
             document.getElementById('ammo').textContent = game.player.ammo;
-            document.getElementById('credits').textContent = game.player.credits;
-            let dirtString = (game.currentDirt == game.blocksForDirtBlock) ? 'drop dirt with [p]' : game.currentDirt + "/" + game.blocksForDirtBlock
+            
+            // Update bar displays with actual values
+            document.getElementById('max-fuel-text').textContent = `${Math.floor(game.player.fuel)}/${Math.floor(game.player.maxFuel)}`;
+            document.getElementById('hull-integrity-text').textContent = `${Math.floor(game.player.hull)}/${Math.floor(game.player.maxHull)}`;
+            
+            // Update Cargo text
+            const currentOre = getCurrentOreCount();
+            const invText = document.getElementById('inventory-size-text');
+            if (currentOre >= game.player.maxInventory) {
+                invText.textContent = `${currentOre}/${game.player.maxInventory}`;
+                invText.classList.add('inventory-full-text');
+            } else {
+                invText.textContent = `${currentOre}/${game.player.maxInventory}`;
+                invText.classList.remove('inventory-full-text');
+            }
+            
+            // Update progress bar widths
+            const fuelBar = document.getElementById('current-fuel-bar');
+            const hullBar = document.getElementById('current-hull-bar');
+            const invBar = document.getElementById('current-inv-bar');
+            
+            const fuelPercent = (game.player.fuel / game.player.maxFuel) * 100;
+            const hullPercent = (game.player.hull / game.player.maxHull) * 100;
+            const invPercent = (currentOre / game.player.maxInventory) * 100;
+            
+            // Update bar widths - need to use vw units to match the old style
+            fuelBar.style.width = `${(fuelPercent / 100) * 10}vw`;
+            hullBar.style.width = `${(hullPercent / 100) * 10}vw`;
+            invBar.style.width = `${(invPercent / 100) * 10}vw`;
+            
+            // Update bar colors based on levels
+            fuelBar.className = 'current-fuel-bar';
+            if (fuelPercent >= 33) {
+                fuelBar.classList.add('full-fuel-bar');
+            } else {
+                fuelBar.classList.add('low-fuel-bar');
+                // Add flash animation if very low
+                if (game.nearShop || game.showShop) {
+                    document.getElementById('fuel-div').querySelector('.bars-text-div').classList.add('flash');
+                    fuelBar.classList.add('flash');
+                }
+            }
+            
+            hullBar.className = 'current-hull-bar';
+            if (hullPercent > 50) {
+                hullBar.classList.add('full-hull-bar');
+            } else {
+                hullBar.classList.add('low-hull-bar');
+                if (game.nearShop || game.showShop) {
+                    document.getElementById('hull-div').querySelector('.bars-text-div').classList.add('flash');
+                    hullBar.classList.add('flash');
+                }
+            }
+            
+            invBar.className = 'current-inv-bar normal-inv-bar';
+            
+            // Update dirt display
+            const dirtPercent = Math.round((game.currentDirt / game.blocksForDirtBlock) * 100);
+            let dirtString = (game.currentDirt === game.blocksForDirtBlock) ? 
+                'Dirt: 100% - press P to drop' : 
+                `Dirt: ${dirtPercent}%`;
             document.getElementById('dirtCount').textContent = dirtString;
-            document.getElementById('score').textContent = `${game.score}`;
-
         }
 
         // Inventory functions
@@ -553,6 +729,12 @@ const canvas = document.getElementById('gameCanvas');
             } else if (oreType === 'platinum' && game.player.platinumOre > 0) {
                 game.player.platinumOre -= 1;
                 game.player.credits += prices.platinum;
+            } else if (oreType === 'amethyst' && game.player.amethystOre > 0) {
+                game.player.amethystOre -= 1;
+                game.player.credits += prices.amethyst;
+            } else if (oreType === 'ruby' && game.player.rubyOre > 0) {
+                game.player.rubyOre -= 1;
+                game.player.credits += prices.ruby;
             }
             updateOreCount();
             updateShopUI();
@@ -566,11 +748,15 @@ const canvas = document.getElementById('gameCanvas');
             game.player.credits += game.player.silverOre * prices.silver;
             game.player.credits += game.player.goldOre * prices.gold;
             game.player.credits += game.player.platinumOre * prices.platinum;
+            game.player.credits += game.player.amethystOre * prices.amethyst;
+            game.player.credits += game.player.rubyOre * prices.ruby;
             
             game.player.bronzeOre = 0;
             game.player.silverOre = 0;
             game.player.goldOre = 0;
             game.player.platinumOre = 0;
+            game.player.amethystOre = 0;
+            game.player.rubyOre = 0;
             
             updateOreCount();
             updateShopUI();
@@ -628,12 +814,13 @@ const canvas = document.getElementById('gameCanvas');
         }
 
         function updateOreCount() {
-            game.player.ore = game.player.bronzeOre + (game.player.silverOre * 3) + 
-                             (game.player.goldOre * 10) + (game.player.platinumOre * 30);
+            game.player.ore = (game.player.bronzeOre*5) + (game.player.silverOre * 10) + 
+                             (game.player.goldOre * 25) + (game.player.platinumOre * 60) + 
+                             (game.player.amethystOre * 150) + (game.player.rubyOre * 400);
         }
 
         function getCurrentOreCount() {
-            return game.player.bronzeOre + game.player.silverOre + game.player.goldOre + game.player.platinumOre;
+            return game.player.bronzeOre + game.player.silverOre + game.player.goldOre + game.player.platinumOre + game.player.amethystOre + game.player.rubyOre;
         }
 
         // Level progression system
@@ -883,10 +1070,16 @@ const canvas = document.getElementById('gameCanvas');
                             game.score += 10;
                         } else if (block.type === 'gold') {
                             game.player.goldOre += 1;
-                            game.score += 20;
+                            game.score += 25;
                         } else if (block.type === 'platinum') {
                             game.player.platinumOre += 1;
-                            game.score += 50;
+                            game.score += 60;
+                        } else if (block.type === 'amethyst') {
+                            game.player.amethystOre += 1;
+                            game.score += 150;
+                        } else if (block.type === 'ruby') {
+                            game.player.rubyOre += 1;
+                            game.score += 400;
                         }
                         updateOreCount();
                         updateStatsDisplay();
@@ -1121,83 +1314,71 @@ const canvas = document.getElementById('gameCanvas');
         }
 
         function render() {
-            ctx.fillStyle = '#001122';
+            ctx.fillStyle = '#001122';                 // background
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Calculate visible block range
-            const startBlockX = Math.floor(game.camera.x / game.BLOCK_SIZE);
-            const endBlockX = Math.ceil((game.camera.x + canvas.width) / game.BLOCK_SIZE);
-            const startBlockY = Math.floor(game.camera.y / game.BLOCK_SIZE);
-            const endBlockY = Math.ceil((game.camera.y + canvas.height) / game.BLOCK_SIZE);
-
-            // Draw only visible terrain
-            for (let y = startBlockY; y <= endBlockY && y < game.currentWorldHeight; y++) {
+        
+            /* ----- visible terrain -------------------------------------- */
+            const startX = Math.floor(game.camera.x / game.BLOCK_SIZE);
+            const endX   = Math.ceil((game.camera.x + canvas.width ) / game.BLOCK_SIZE);
+            const startY = Math.floor(game.camera.y / game.BLOCK_SIZE);
+            const endY   = Math.ceil((game.camera.y + canvas.height) / game.BLOCK_SIZE);
+        
+            for (let y = startY; y <= endY && y < game.currentWorldHeight; y++) {
                 if (y < 0) continue;
-                for (let x = startBlockX; x <= endBlockX && x < game.WORLD_WIDTH; x++) {
+                for (let x = startX; x <= endX && x < game.WORLD_WIDTH; x++) {
                     if (x < 0) continue;
-                    
-                    const block = game.terrain[y] && game.terrain[y][x];
-                    if (block && block.exists) {
-                        const screenX = x * game.BLOCK_SIZE - game.camera.x;
-                        const screenY = y * game.BLOCK_SIZE - game.camera.y;
-                        
-                        switch (block.type) {
-                            case 'dirt':
-                                ctx.fillStyle = '#8B4513';
-                                break;
-                            case 'bronze':
-                                ctx.fillStyle = '#CD7F32';
-                                break;
-                            case 'silver':
-                                ctx.fillStyle = '#C0C0C0';
-                                break;
-                            case 'gold':
-                                ctx.fillStyle = '#FFD700';
-                                break;
-                            case 'platinum':
-                                ctx.fillStyle = '#E5E4E2';
-                                break;
-                            case 'shop':
-                                ctx.fillStyle = '#00AAFF';
-                                break;
-                        }
-                        
-                        ctx.fillRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
-                        ctx.strokeStyle = '#333';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
-                        
-                        if (block.type === 'shop') {
-                            ctx.fillStyle = 'white';
-                            ctx.font = `${Math.floor(game.BLOCK_SIZE * 0.25)}px Arial`;
-                            ctx.textAlign = 'center';
-                            ctx.fillText('SHOP', screenX + game.BLOCK_SIZE/2, screenY + game.BLOCK_SIZE/2 + 3);
+        
+                    const blk = game.terrain[y] && game.terrain[y][x];
+                    if (!blk || !blk.exists) continue;
+        
+                    const sx = x * game.BLOCK_SIZE - game.camera.x;
+                    const sy = y * game.BLOCK_SIZE - game.camera.y;
+        
+                    if (blk.type === 'shop') {                   // shop stays a coloured block
+                        ctx.fillStyle = '#00AAFF';
+                        ctx.fillRect(sx, sy, game.BLOCK_SIZE, game.BLOCK_SIZE);
+                        ctx.fillStyle = '#FFF';
+                        ctx.font = `${Math.floor(game.BLOCK_SIZE * 0.25)}px Arial`;
+                        ctx.textAlign = 'center';
+                        ctx.fillText('SHOP', sx + game.BLOCK_SIZE/2, sy + game.BLOCK_SIZE/2 + 3);
+                    } else {
+                        const img = window.SPRITE_IMAGES[blk.type];
+                        if (img) {
+                            drawCroppedSquare(img, sx, sy, game.BLOCK_SIZE, ctx);
+                        } else {
+                            ctx.fillStyle = '#555';
+                            ctx.fillRect(sx, sy, game.BLOCK_SIZE, game.BLOCK_SIZE);
                         }
                     }
                 }
             }
+            /* ------------------------------------------------------------- */
+        
+            /* ----- player ------------------------------------------------ */
+            const px = game.player.x - game.camera.x;
+            const py = game.player.y - game.camera.y;
+            const pImg = window.SPRITE_IMAGES.player;
+            const tint = getPlayerTint(game);
 
-            // Draw player relative to camera
+            if (pImg) {
+                drawTinted(ctx, pImg, tint, px, py, game.player.width, game.player.height);
+            } else {   // fallback square while image still loading
+                ctx.fillStyle = tint || '#1cc941';
+                ctx.fillRect(px, py, game.player.width, game.player.height);
+            }
+            /* ------------------------------------------------------------- */
+            if (tint) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'source-atop';
+                ctx.fillStyle = tint;
+                ctx.globalAlpha = 0.6;               // adjust intensity here
+                ctx.fillRect(px, py, game.player.width, game.player.height);
+                ctx.restore();
+            }
+
+            /* ----- player drill‑light ---------------------------------- */
             const playerScreenX = game.player.x - game.camera.x;
             const playerScreenY = game.player.y - game.camera.y;
-            let playerColor = '#1cc941'
-            if (game.player.fuel/game.player.maxFuel < 0.1 && getCurrentOreCount() == game.player.maxInventory) { 
-                playerColor = '#c850e6'
-            } else if (game.player.fuel/game.player.maxFuel < 0.3 && getCurrentOreCount() == game.player.maxInventory) { 
-                playerColor = '#50b9e6'
-            } else if (getCurrentOreCount() == game.player.maxInventory) {
-                playerColor = '#1168f5'
-            } else if (game.player.fuel/game.player.maxFuel < 0.1) {
-                playerColor = '#e33636'
-            } else if (game.player.fuel/game.player.maxFuel < 0.3) {
-                playerColor = '#FFAA00'
-            } else {
-                playerColor = '#1cc941'
-            }
-            ctx.fillStyle = playerColor
-            ctx.fillRect(playerScreenX, playerScreenY, game.player.width, game.player.height);
-
-            // Draw drilling relative to camera
             if (game.player.drilling) {
                 ctx.fillStyle = '#FF6600';
                 let drillX = playerScreenX;
@@ -1217,13 +1398,12 @@ const canvas = document.getElementById('gameCanvas');
                     ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
                 }
             }
-
+        
             renderEnemies(game, ctx);
-
             renderLasers();
-            
             renderExplosions();
         }
+        
 
         function gameLoop() {
             updatePlayer();
@@ -1234,6 +1414,153 @@ const canvas = document.getElementById('gameCanvas');
             render();
             requestAnimationFrame(gameLoop);
         }
+
+        // Add this to your game.js file
+
+function createStatsBar() {
+    const statsBar = document.createElement('div');
+    statsBar.className = 'stats-bar';
+    
+    // Create score/level section
+    const scoreLevelDiv = createScoreLevelDiv();
+    
+    // Create bars section (fuel, hull, cargo)
+    const barsDiv = createBarsDiv();
+    
+    // Create ammo section
+    const ammoDiv = createAmmoDiv();
+    
+    // Create dirt section
+    const dirtDiv = createDirtDiv();
+    
+    statsBar.append(scoreLevelDiv, barsDiv, ammoDiv, dirtDiv);
+    return statsBar;
+}
+
+function createScoreLevelDiv() {
+    const container = document.createElement('div');
+    container.className = 'score-level-div centered';
+    
+    const levelDiv = document.createElement('div');
+    levelDiv.className = 'level-div centered';
+    levelDiv.innerHTML = 'Level <span id="level">1</span>';
+    
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'score-div centered';
+    scoreDiv.innerHTML = '<span id="score">0</span>';
+    
+    container.append(levelDiv, scoreDiv);
+    return container;
+}
+
+function createBarsDiv() {
+    const barsDiv = document.createElement('div');
+    barsDiv.className = 'bars-div';
+    
+    const fuelDiv = createBarSection('fuel', 'Fuel - ', game.player.fuel, game.player.maxFuel);
+    const hullDiv = createBarSection('hull', 'Hull - ', game.player.hull, game.player.maxHull);
+    const inventoryDiv = createInventoryBar();
+    
+    barsDiv.append(fuelDiv, hullDiv, inventoryDiv);
+    return barsDiv;
+}
+
+function createBarSection(type, label, current, max) {
+    const container = document.createElement('div');
+    container.id = `${type}-div`;
+    
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'bars-text-div';
+    labelDiv.textContent = label;
+    
+    const emptyBar = document.createElement('div');
+    emptyBar.className = `empty-${type}-bar`;
+    emptyBar.id = `empty-${type}-bar`; // Add ID for targeting
+    
+    const currentBar = document.createElement('div');
+    currentBar.className = `current-${type}-bar`;
+    currentBar.id = `current-${type}-bar`;
+    
+    // Set initial width using vw units like the old game
+    const percent = (current / max) * 100;
+    currentBar.style.width = `${(percent / 100) * 10}vw`;
+    
+    // Set color class based on level
+    if (type === 'fuel') {
+        currentBar.classList.add(percent >= 33 ? 'full-fuel-bar' : 'low-fuel-bar');
+    } else if (type === 'hull') {
+        currentBar.classList.add(percent > 50 ? 'full-hull-bar' : 'low-hull-bar');
+    }
+    
+    emptyBar.appendChild(currentBar);
+    
+    const valueDiv = document.createElement('div');
+    valueDiv.className = 'bars-text-div';
+    valueDiv.id = `${type === 'fuel' ? 'max-fuel' : 'hull-integrity'}-text`;
+    valueDiv.textContent = `${Math.floor(current)}/${Math.floor(max)}`;
+    
+    container.append(labelDiv, emptyBar, valueDiv);
+    return container;
+}
+
+function createInventoryBar() {
+    const container = document.createElement('div');
+    container.className = 'inventory';
+    
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'bars-text-div';
+    labelDiv.textContent = 'Cargo ';
+    
+    const emptyBar = document.createElement('div');
+    emptyBar.className = 'empty-inv-bar';
+    emptyBar.id = 'empty-inv-bar';
+    
+    const currentBar = document.createElement('div');
+    currentBar.className = 'current-inv-bar normal-inv-bar';
+    currentBar.id = 'current-inv-bar';
+    
+    const current = getCurrentOreCount();
+    const percent = (current / game.player.maxInventory) * 100;
+    currentBar.style.width = `${(percent / 100) * 10}vw`;
+    
+    emptyBar.appendChild(currentBar);
+    
+    const valueDiv = document.createElement('div');
+    valueDiv.className = 'bars-text-div';
+    valueDiv.id = 'inventory-size-text';
+    
+    // Show either inventory count or [Press 'i']
+    if (current > 0 || game.player.maxInventory !== 12) {
+        valueDiv.textContent = `${current}/${game.player.maxInventory}`;
+    } else {
+        valueDiv.textContent = "[Press 'i']";
+    }
+    
+    container.append(labelDiv, emptyBar, valueDiv);
+    return container;
+}
+
+function createAmmoDiv() {
+    const container = document.createElement('div');
+    container.className = 'all-weapons-div';
+    
+    const ammoText = document.createElement('div');
+    ammoText.className = 'ammo-text-div';
+    ammoText.innerHTML = `Ammo: <span id="ammo">${game.player.ammo}</span>`;
+    
+    container.appendChild(ammoText);
+    return container;
+}
+
+function createDirtDiv() {
+    const container = document.createElement('div');
+    container.className = 'dirt-div centered top-vertical-div';
+    
+    const dirtPercent = Math.round((game.currentDirt / game.blocksForDirtBlock) * 100);
+    container.innerHTML = `Dirt: <span id="dirtCount">${dirtPercent}%</span>`;
+    
+    return container;
+}
 
         
 
@@ -1261,6 +1588,8 @@ window.gameAPI = {
 // Initialize game when DOM is ready
 function initGame() {
     // Initialize game state
+    const statsBar = createStatsBar();
+    document.body.insertBefore(statsBar, document.body.firstChild);
     game.currentWorldHeight = game.BASE_WORLD_HEIGHT;
     game.enemies = []; // Initialize enemies array
     
@@ -1286,8 +1615,13 @@ function checkGameOver() {
 }
 
 // Ensure DOM is loaded before initializing
+// if (document.readyState === 'loading') {
+//     document.addEventListener('DOMContentLoaded', initGame);
+// } else {
+//     initGame();
+// }
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initGame);
+    document.addEventListener('DOMContentLoaded', () => loadSprites(initGame));
 } else {
-    initGame();
+    loadSprites(initGame);
 }
