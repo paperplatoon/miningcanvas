@@ -122,7 +122,7 @@ const game = {
     score: 0,
     BLOCK_SIZE: 40,
     WORLD_WIDTH: 20,
-    BASE_WORLD_HEIGHT: 50,
+    BASE_WORLD_HEIGHT: 200,
     VISIBLE_BLOCKS_X: 12,  // How many blocks wide the viewport is
     VISIBLE_BLOCKS_Y: 10,  // How many blocks tall the viewport is
     
@@ -215,8 +215,21 @@ const game = {
     },
     showInventory: false,
     showShop: false,
-    maxFuelUpgradeCost: 50,
-    MaxHullUpgradeCost: 50,
+    fuelUpgrades: {
+        upgradeCosts: [300, 1500, 4000, 10000],
+        upgradeValues: [160, 250, 380, 500],
+        nextUpgrade: 0,
+    },
+    hullUpgrades: {
+        upgradeCosts: [300, 1500, 4000, 10000],
+        upgradeValues: [150, 200, 250, 300],
+        nextUpgrade: 0,
+    },
+    cargoUpgrades: {
+        upgradeCosts: [300, 1500, 4000, 10000],
+        upgradeValues: [16, 24, 36, 50],
+        nextUpgrade: 0,
+    },
     shopTab: 'sell',
     nearShop: false,
     terrain: [],
@@ -570,7 +583,7 @@ const canvas = document.getElementById('gameCanvas');
                 upgradesTitle.textContent = 'UPGRADES:';
                 content.appendChild(upgradesTitle);
                 
-                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel - ${game.maxFuelUpgradeCost} credits`);
+                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel - ${game.fuelsUpgrades} credits`);
                 const fuelBtn = addButton(fuelUpgradeRow, 'Buy', () => buyMaxFuelUpgrade());
                 if (game.player.credits < game.maxFuelUpgradeCost) fuelBtn.disabled = true;
                 content.appendChild(fuelUpgradeRow);
