@@ -216,19 +216,22 @@ const game = {
     showInventory: false,
     showShop: false,
     fuelUpgrades: {
-        upgradeCosts: [300, 1500, 4000, 10000],
-        upgradeValues: [160, 250, 380, 500],
-        nextUpgrade: 0,
+        names: ["Small", "Medium", "Large", "Giant", "Titanic", "Maximum"],
+        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        values: [160, 250, 380, 500, 1000, 2000],
+        next: 0,
     },
     hullUpgrades: {
-        upgradeCosts: [300, 1500, 4000, 10000],
-        upgradeValues: [150, 200, 250, 300],
-        nextUpgrade: 0,
+        names: ["Weak", "Medium", "Strong", "Reinforced", "Titanium", "Maximum"],
+        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        values: [150, 200, 250, 300, 500, 750],
+        next: 0,
     },
     cargoUpgrades: {
-        upgradeCosts: [300, 1500, 4000, 10000],
-        upgradeValues: [16, 24, 36, 50],
-        nextUpgrade: 0,
+        names: ["Small", "Medium", "Large", "Giant", "Titanic", "Maximum"],
+        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        values: [16, 24, 36, 50, 100, 150],
+        next: 0,
     },
     shopTab: 'sell',
     nearShop: false,
@@ -253,50 +256,36 @@ const game = {
 
 
 
-const canvas = document.getElementById('gameCanvas');
+        const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
         function resizeCanvas() {
             const container = document.querySelector('.game-container');
-            
-            // Use full container size, minus a small margin for borders
-            const maxWidth = container.clientWidth - 4;  // Was 40, now just 4 for border
-            const maxHeight = container.clientHeight - 4;  // Was 40, now just 4 for border
-            
-            const aspectRatio = game.VISIBLE_BLOCKS_X / game.VISIBLE_BLOCKS_Y;
-            
-            let width = maxWidth;
-            let height = width / aspectRatio;
-            
-            if (height > maxHeight) {
-                height = maxHeight;
-                width = height * aspectRatio;
-            }
+            const width = container.clientWidth;
+            const height = container.clientHeight;
         
-            const prevBlockSize = game.BLOCK_SIZE;
-        
-            // Record block-based center before resize
-            const blockCenterX = (game.player.x + game.player.width / 2) / prevBlockSize;
-            const blockCenterY = (game.player.y + game.player.height / 2) / prevBlockSize;
-        
-            // Resize canvas and recompute block size
             canvas.width = width;
             canvas.height = height;
+        
             game.BLOCK_SIZE = Math.floor(width / game.VISIBLE_BLOCKS_X);
         
-            // Scale all physics values with the new block size
+            // Maintain block center for player
+            const blockCenterX = (game.player.x + game.player.width / 2) / game.BLOCK_SIZE;
+            const blockCenterY = (game.player.y + game.player.height / 2) / game.BLOCK_SIZE;
+        
+            game.player.width = Math.floor(game.BLOCK_SIZE * 0.45);
+            game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
+            game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
+            game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
+        
+            // Re-scale physics
             game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE;
             game.playerStats.thrustPower = game.BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE;
             game.playerStats.drillSpeed = game.BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE;
             game.physics.gravity = game.BASE_PHYSICS.gravity * game.BLOCK_SIZE;
             game.physics.maxSpeed = game.BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE;
-        
-            // Recompute player pixel position from same block center
-            game.player.width = Math.floor(game.BLOCK_SIZE * 0.45);
-            game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
-            game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
-            game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
         }
+        
 
         // Create simple terrain
         function generateTerrain() {
@@ -583,15 +572,33 @@ const canvas = document.getElementById('gameCanvas');
                 upgradesTitle.textContent = 'UPGRADES:';
                 content.appendChild(upgradesTitle);
                 
-                const fuelUpgradeRow = createShopRow(`Upgrade Max Fuel - ${game.fuelsUpgrades} credits`);
+                const Findex = game.fuelUpgrades.next
+                const fu = game.fuelUpgrades
+                const fuelUpgradeRow = createShopRow(`Upgrade - ${fu.names[Findex]} Fuel Tank - ${fu.costs[Findex]} credits`);
                 const fuelBtn = addButton(fuelUpgradeRow, 'Buy', () => buyMaxFuelUpgrade());
-                if (game.player.credits < game.maxFuelUpgradeCost) fuelBtn.disabled = true;
-                content.appendChild(fuelUpgradeRow);
-                
-                const hullUpgradeRow = createShopRow(`Upgrade Max Hull - ${game.MaxHullUpgradeCost} credits`);
+                if (game.player.credits < fu.costs[Findex]) fuelBtn.disabled = true;
+                if (fu.next <= 5) {
+                    content.appendChild(fuelUpgradeRow);
+                }
+
+                const Hindex = game.hullUpgrades.next
+                const hu = game.hullUpgrades
+                const hullUpgradeRow = createShopRow(`Upgrade - ${hu.names[Hindex]} Hull - ${hu.costs[Hindex]} credits`);
                 const hullBtn = addButton(hullUpgradeRow, 'Buy', () => buyMaxHullUpgrade());
-                if (game.player.credits < game.MaxHullUpgradeCost) hullBtn.disabled = true;
-                content.appendChild(hullUpgradeRow);
+                if (game.player.credits < hu.costs[Hindex]) hullBtn.disabled = true;
+                if (hu.next <= 5) {
+                    content.appendChild(hullUpgradeRow);
+                }
+
+                const Cindex = game.cargoUpgrades.next
+                const cu = game.cargoUpgrades
+                const cargoUpgradeRow = createShopRow(`Upgrade - ${cu.names[Cindex]} Cargo Bay - ${cu.costs[Cindex]} credits`);
+                const cargoBtn = addButton(cargoUpgradeRow, 'Buy', () => buyMaxCargoUpgrade());
+                if (game.player.credits < cu.costs[Cindex]) cargoBtn.disabled = true;
+                if (cu.next <= 5) {
+                    content.appendChild(cargoUpgradeRow);
+                }
+
             }
 
         function createShopRow(text, oreType = '') {
@@ -801,26 +808,38 @@ const canvas = document.getElementById('gameCanvas');
         }
 
         function buyMaxFuelUpgrade() {
-            const upgradeCost = game.maxFuelUpgradeCost;
+            const upgradeCost = game.fuelUpgrades.costs[game.fuelUpgrades.next];
             
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
-                game.player.maxFuel += 50;
+                game.player.maxFuel = game.fuelUpgrades.values[game.fuelUpgrades.next];
+                game.fuelUpgrades.next += 1;
                 game.player.fuel = game.player.maxFuel
-                game.maxFuelUpgradeCost *= 2;
                 updateShopUI();
                 updateStatsDisplay();
             }
         }
 
         function buyMaxHullUpgrade() {
-            const upgradeCost = game.MaxHullUpgradeCost;
+            const upgradeCost = game.hullUpgrades.costs[game.hullUpgrades.next];
             
             if (game.player.credits >= upgradeCost) {
                 game.player.credits -= upgradeCost;
-                game.player.maxHull += 50;
-                game.MaxHullUpgradeCost *= 2;
+                game.player.maxHull = game.hullUpgrades.values[game.hullUpgrades.next]
+                game.hullUpgrades.next += 1;
                 game.player.hull = game.player.maxHull
+                updateShopUI();
+                updateStatsDisplay();
+            }
+        }
+
+        function buyMaxCargoUpgrade() {
+            const upgradeCost = game.cargoUpgrades.costs[game.cargoUpgrades.next];
+            
+            if (game.player.credits >= upgradeCost) {
+                game.player.credits -= upgradeCost;
+                game.player.maxInventory = game.cargoUpgrades.values[game.cargoUpgrades.next]
+                game.cargoUpgrades.next += 1;
                 updateShopUI();
                 updateStatsDisplay();
             }
