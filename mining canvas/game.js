@@ -36,6 +36,38 @@ function drawCroppedSquare(img, dx, dy, size, ctx) {
                   dx, dy, size, size);       // dest rect (fills block)
   }
 
+  function getDepthRegion(depth) {               // depth ∈ [0,1]
+    let min = 0;
+    for (const r of game.depthRegions) {
+        if (depth <= r.maxDepth) return { ...r, minDepth: min };
+        min = r.maxDepth;
+    }
+    return { ...game.depthRegions.at(-1), minDepth: min };
+}
+
+function interpolateWeights(region, progress) {  // progress 0‑1 within region
+    const out = {};
+    const keys = new Set([...Object.keys(region.top), ...Object.keys(region.bottom)]);
+    keys.forEach(k => {
+        const wTop = region.top[k]    ?? 0;
+        const wBot = region.bottom[k] ?? 0;
+        out[k] = wTop + (wBot - wTop) * progress;
+    });
+    return out;
+}
+
+function weightedChoice(weights) {
+    let total = 0;
+    for (const w of Object.values(weights)) total += w;
+    let r = Math.random() * total;
+    for (const [k, w] of Object.entries(weights)) {
+        if (r < w) return k;
+        r -= w;
+    }
+    return 'bronze';          // never reached if weights > 0
+}
+
+
   /* ------------------------------------------------------------------
    Returns a hex colour (tint) representing player status,
    or null for “normal” (no tint).  Logic mirrors the old version.
@@ -123,8 +155,8 @@ const game = {
     BLOCK_SIZE: 40,
     WORLD_WIDTH: 20,
     BASE_WORLD_HEIGHT: 200,
-    VISIBLE_BLOCKS_X: 12,  // How many blocks wide the viewport is
-    VISIBLE_BLOCKS_Y: 10,  // How many blocks tall the viewport is
+    VISIBLE_BLOCKS_X: 8,  // How many blocks wide the viewport is
+    VISIBLE_BLOCKS_Y: 6,  // How many blocks tall the viewport is
     
     // Level system
     currentLevel: 1,
@@ -142,21 +174,38 @@ const game = {
     },
     
     // Ore generation settings
-    oreGeneration: {
-        oreChance: 0.2,
-        rubyChance: 0.01,
-        amethystChance: 0.04,
-        platinumChance: 0.1,
-        goldChance: 0.3,
-        silverChance: 0.9,
-    },
+    oreChance: 0.2,        // keep editable
+    airChance: 0.05,  
+
+    depthRegions: [
+        {                           // 0 – 0.25
+            maxDepth : 0.25,
+            top      : { bronze: 5,  silver: 1,   gold: 0.20 },
+            bottom   : { bronze: 4,  silver: 1.2, gold: 0.25 }
+        },
+        {                           // 0.25 – 0.50
+            maxDepth : 0.50,
+            top      : { bronze: 2,  silver: 1,   gold: 0.20, platinum: 0.04 },
+            bottom   : { bronze: 1,  silver: 1.5, gold: 0.30, platinum: 0.06 }
+        },
+        {                           // 0.50 – 0.75
+            maxDepth : 0.75,
+            top      : { bronze: 1,  silver: 2,   gold: 1,    platinum: 0.20, amethyst: 0.04 },
+            bottom   : { bronze: .8, silver: 1.8, gold: 1.2,  platinum: 0.25, amethyst: 0.06 }
+        },
+        {                           // 0.75 – 1.00
+            maxDepth : 1.00,
+            top      : { bronze: .5, silver: 1,   gold: 2,    platinum: 1,    amethyst: 0.20, ruby: 0.04 },
+            bottom   : { bronze: .3, silver: .8,  gold: 2.5,  platinum: 1.2,  amethyst: 0.25, ruby: 0.06 }
+        }
+    ],
     
     // Player movement and action settings
     playerStats: {
         moveAcceleration: 0.5,
         thrustPower: 0.8,
         drillSpeed: 1.5,
-        drillTime: 30,
+        drillTime: 150,
     },
 
     physics: {
@@ -208,6 +257,8 @@ const game = {
         drillDirection: '',
         lastMoveDirection: 'right',
         lastHitTime: 0,
+
+        currentDrill: null,
     },
     camera: {
         x: 0,
@@ -217,22 +268,28 @@ const game = {
     showShop: false,
     fuelUpgrades: {
         names: ["Small", "Medium", "Large", "Giant", "Titanic", "Maximum"],
-        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        costs: [200, 750, 2000, 10000, 50000, 100000],
         values: [160, 250, 380, 500, 1000, 2000],
         next: 0,
     },
     hullUpgrades: {
         names: ["Weak", "Medium", "Strong", "Reinforced", "Titanium", "Maximum"],
-        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        costs: [200, 750, 2000, 10000, 50000, 100000],
         values: [150, 200, 250, 300, 500, 750],
         next: 0,
     },
     cargoUpgrades: {
         names: ["Small", "Medium", "Large", "Giant", "Titanic", "Maximum"],
-        costs: [300, 1500, 4000, 10000, 50000, 100000],
+        costs: [200, 750, 2000, 10000, 50000, 100000],
         values: [16, 24, 36, 50, 100, 150],
         next: 0,
     },
+    speedMultipliers: {
+        player: 1,    // default
+        enemies: 3.0    // default
+    },
+    
+
     shopTab: 'sell',
     nearShop: false,
     terrain: [],
@@ -261,30 +318,31 @@ const game = {
         
         function resizeCanvas() {
             const container = document.querySelector('.game-container');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
         
-            canvas.width = width;
-            canvas.height = height;
+            game.BLOCK_SIZE = 150; // or 40 — pick your preferred zoom level
         
-            game.BLOCK_SIZE = Math.floor(width / game.VISIBLE_BLOCKS_X);
+            canvas.width = game.VISIBLE_BLOCKS_X * game.BLOCK_SIZE;
+            canvas.height = game.VISIBLE_BLOCKS_Y * game.BLOCK_SIZE;
         
-            // Maintain block center for player
-            const blockCenterX = (game.player.x + game.player.width / 2) / game.BLOCK_SIZE;
-            const blockCenterY = (game.player.y + game.player.height / 2) / game.BLOCK_SIZE;
+            const prevBlockSize = game.BLOCK_SIZE;
         
-            game.player.width = Math.floor(game.BLOCK_SIZE * 0.45);
+            // Maintain player position in terms of block center
+            const blockCenterX = (game.player.x + game.player.width / 2) / prevBlockSize;
+            const blockCenterY = (game.player.y + game.player.height / 2) / prevBlockSize;
+        
+            // Recompute scaled values
+            game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE * game.speedMultipliers.player;
+            game.playerStats.thrustPower      = game.BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE * game.speedMultipliers.player;
+            game.playerStats.drillSpeed       = game.BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE * game.speedMultipliers.player;
+            game.physics.gravity              = game.BASE_PHYSICS.gravity * game.BLOCK_SIZE * game.speedMultipliers.player;
+            game.physics.maxSpeed             = game.BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE * game.speedMultipliers.player;
+        
+            game.player.width  = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
             game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
-        
-            // Re-scale physics
-            game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE;
-            game.playerStats.thrustPower = game.BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE;
-            game.playerStats.drillSpeed = game.BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE;
-            game.physics.gravity = game.BASE_PHYSICS.gravity * game.BLOCK_SIZE;
-            game.physics.maxSpeed = game.BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE;
         }
+        
         
 
         // Create simple terrain
@@ -297,22 +355,22 @@ const game = {
                     if (y >= 6) {
                         let blockType = 'dirt';
                         let blockChance = Math.random()
-                        if (blockChance > 0.95) {
+                        
+                        if (blockChance < game.airChance) {
                             game.terrain[y][x] = { type: 'air', exists: false };
-                        } else if (blockChance < game.oreGeneration.oreChance) {
-                            const oreRoll = Math.random();
-                            let depth = (y/game.currentWorldHeight)
-                            if ((oreRoll < game.oreGeneration.rubyChance * depth) && (depth >= 0.8)) blockType = 'ruby';
-                            else if((oreRoll < game.oreGeneration.amethystChance * depth) && (depth >= 0.6)) blockType = 'amethyst';
-                            else if((oreRoll < game.oreGeneration.platinumChance * depth) && (depth >= 0.4)) blockType = 'platinum';
-                            else if (oreRoll < game.oreGeneration.goldChance*depth) blockType = 'gold';
-                            else if (oreRoll < game.oreGeneration.silverChance*depth) blockType = 'silver';
-                            else blockType = 'bronze';
-                            game.terrain[y][x] = { type: blockType, exists: true };
+                        
+                        } else if (blockChance < game.airChance + game.oreChance) {
+                            const depthRatio = y / game.currentWorldHeight;          // 0–1
+                            const region      = getDepthRegion(depthRatio);
+                            const progress    = (depthRatio - region.minDepth) / (region.maxDepth - region.minDepth);
+                            const weights     = interpolateWeights(region, progress);
+                            const oreType     = weightedChoice(weights);
+                        
+                            game.terrain[y][x] = { type: oreType, exists: true };
+                        
                         } else {
-                            game.terrain[y][x] = { type: blockType, exists: true };
+                            game.terrain[y][x] = { type: 'dirt', exists: true };
                         }
-        
                     } else if (y >= game.shop.y && y < game.shop.y + game.shop.height && 
                                x >= game.shop.x && x < game.shop.x + game.shop.width) {
                         game.terrain[y][x] = { type: 'shop', exists: true };
@@ -325,7 +383,7 @@ const game = {
                                Math.floor(Math.random() * game.enemyGeneration.enemyCountVariation) + 
                                (game.currentLevel - 1) * (game.enemyGeneration.enemyIncreasePerLevel + 
                                Math.floor(Math.random() * game.enemyGeneration.enemyIncreaseVariation));
-            game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE, enemyCount);
+            game.enemies = initEnemies(game.terrain, game.currentLevel, game.BLOCK_SIZE, enemyCount), game.speedMultipliers.enemies;
         }
 
         // Input
@@ -1233,38 +1291,39 @@ const game = {
             }
             
             if (drillTarget) {
-                player.drilling = true;
-                player.drillDirection = drillDirection;
-                player.drillProgress += game.playerStats.drillSpeed;
-                
-                if (player.drillProgress >= game.playerStats.drillTime) {
+                if (!player.currentDrill || player.currentDrill.x !== drillTarget.x || player.currentDrill.y !== drillTarget.y) {
+                    player.currentDrill = { x: drillTarget.x, y: drillTarget.y, progress: 0 };
+                }
+                player.currentDrill.progress += game.playerStats.drillSpeed;
+                player.drillDirection = drillDirection
+            
+                if (player.currentDrill.progress >= game.playerStats.drillTime) {
                     removeBlock(drillTarget.x, drillTarget.y);
-                    player.drillProgress = 0;
+                    player.currentDrill = null;
                     player.fuel = Math.max(0, player.fuel - 1);
                 }
             } else {
-                player.drilling = false;
-                player.drillProgress = 0;
-                player.drillDirection = '';
-            }
+                player.currentDrill = null;
+                player.drillDirection = ''
+            }            
 
             // Movement
             if (!player.drilling) {
                 if (game.keys['a']) {
                     player.vx -= game.playerStats.moveAcceleration;
-                    player.fuel = Math.max(0, player.fuel - 0.07);
+                    player.fuel = Math.max(0, player.fuel - 0.05);
                     player.lastMoveDirection = 'left';
                 }
                 if (game.keys['d']) {
                     player.vx += game.playerStats.moveAcceleration;
-                    player.fuel = Math.max(0, player.fuel - 0.07);
+                    player.fuel = Math.max(0, player.fuel - 0.05);
                     player.lastMoveDirection = 'right';
                 }
             }
 
             if (game.keys['w']) {
                 player.vy -= game.playerStats.thrustPower;
-                player.fuel = Math.max(0, player.fuel - 0.08);
+                player.fuel = Math.max(0, player.fuel - 0.07);
             }
 
             // Physics
@@ -1313,7 +1372,8 @@ const game = {
             
             // Center camera on player
             game.camera.x = player.x + player.width/2 - halfViewportWidth;
-            game.camera.y = player.y + player.height/2 - halfViewportHeight;
+            game.camera.y = player.y + player.height / 2 - canvas.height * 0.25;
+
             
             // Clamp camera to world bounds
             game.camera.x = Math.max(0, Math.min(game.camera.x, game.WORLD_WIDTH * game.BLOCK_SIZE - game.VISIBLE_BLOCKS_X * game.BLOCK_SIZE));
@@ -1411,7 +1471,15 @@ const game = {
             /* ----- player drill‑light ---------------------------------- */
             const playerScreenX = game.player.x - game.camera.x;
             const playerScreenY = game.player.y - game.camera.y;
-            if (game.player.drilling) {
+
+            if (game.player.currentDrill) {
+                const { x, y, progress } = game.player.currentDrill;
+                const screenX = x * game.BLOCK_SIZE - game.camera.x;
+                const screenY = y * game.BLOCK_SIZE - game.camera.y;
+                const ratio = Math.min(1, progress / game.playerStats.drillTime);
+                ctx.fillStyle = `rgba(0,0,0,${ratio * 0.2})`;
+                ctx.fillRect(screenX, screenY, game.BLOCK_SIZE, game.BLOCK_SIZE);
+
                 ctx.fillStyle = '#FF6600';
                 let drillX = playerScreenX;
                 let drillY = playerScreenY;
@@ -1429,7 +1497,7 @@ const game = {
                     drillY = playerScreenY + 2;
                     ctx.fillRect(drillX, drillY, 4, game.player.height - 4);
                 }
-            }
+            }            
         
             renderEnemies(game, ctx);
             renderLasers();

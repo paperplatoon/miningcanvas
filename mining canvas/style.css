@@ -13,12 +13,27 @@
    ===================================================== */
 
    html, body {
-    width: 100%;
-    height: 100%;
     margin: 0;
     padding: 0;
+    height: 100%;
     overflow: hidden;
 }
+
+#gameCanvas {
+    display: block;
+    image-rendering: pixelated;
+    width: auto;
+    height: auto;
+}
+
+
+.game-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
 
 body {
     background: #222;

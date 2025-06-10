@@ -55,7 +55,7 @@ export class Enemy {
   }
 }
 
-export function initEnemies(terrain, level, blockSize, enemyCount) {
+export function initEnemies(terrain, level, blockSize, enemyCount, speedMult=1) {
   const rows = terrain.length;
   const cols = terrain[0].length;
   const enemies = [];
@@ -86,7 +86,7 @@ export function initEnemies(terrain, level, blockSize, enemyCount) {
     
     // Place the enemy in the center of the tunnel
     const enemyX = startX + Math.floor(tunnelLength / 2);
-    const speed = 2 + 0.3 * level;
+    const speed = (2 + 0.3 * level) * speedMult;
     enemies.push(new Enemy(
       enemyX, y,
       startX * blockSize,
