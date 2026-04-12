@@ -163,14 +163,20 @@ const game = {
     currentWorldHeight: 50,
 
     BASE_PHYSICS: {
-        gravity: 0.012,   // per block
-        maxSpeed: 0.08,   // per block
+        /* all values are   “per‑block per‑frame”   */
+        gravityAccel:        0.01,    // ≈ 0.15 px at 150 px blocks
+        thrustAccel:         0.04,  // ≈ 0.35 px at 150 px blocks
+        airFrictionX:        0.98,     // horizontal drag (unit‑less)
+        groundFriction:      0.90,     // drag when standing on a block
+        maxSpeedX:           0.4,   // blocks / frame  (≈ 5 px)
+        maxFallBlocksPerSec: 3,
+        maxRiseBlocksPerSec: 3
     },
 
     BASE_PLAYER_STATS: {
         moveAcceleration: 0.018, // per block
         thrustPower: 0.02,       // per block
-        drillSpeed: 0.04,        // per block
+        drillSpeed: 0.1,        // per block
     },
     
     // Ore generation settings
@@ -209,10 +215,15 @@ const game = {
     },
 
     physics: {
-        gravity: 0.5,              // Was 0.3 - higher = fall faster
-        airFriction: 0.96,         // Was 0.98 - lower = less air resistance  
-        groundFriction: 0.85,      // Was 0.92 - lower = less ground friction
-        maxSpeed: 5,               // Was 3 - higher = faster movement
+        gravityAccel: 0.15,          // px / frame²
+        thrustAccel: 0.35,           // px / frame² when up‑key held
+        airFrictionX: 0.96,          // horizontal drag
+        maxSpeedX: 5,                // horiz. speed cap (px / frame)
+
+        maxFallBlocksPerSec: 3,      // terminal velocity (blocks/s)
+        maxRiseBlocksPerSec: 3,
+        maxFallSpeed: 0,             // ← computed once BLOCK_SIZE is known
+        maxRiseSpeed: 0           // Was 3 - higher = faster movement
     },
     
     // Shop pricing settings
@@ -330,17 +341,13 @@ const game = {
             const blockCenterX = (game.player.x + game.player.width / 2) / prevBlockSize;
             const blockCenterY = (game.player.y + game.player.height / 2) / prevBlockSize;
         
-            // Recompute scaled values
-            game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * game.BLOCK_SIZE * game.speedMultipliers.player;
-            game.playerStats.thrustPower      = game.BASE_PLAYER_STATS.thrustPower * game.BLOCK_SIZE * game.speedMultipliers.player;
-            game.playerStats.drillSpeed       = game.BASE_PLAYER_STATS.drillSpeed * game.BLOCK_SIZE * game.speedMultipliers.player;
-            game.physics.gravity              = game.BASE_PHYSICS.gravity * game.BLOCK_SIZE * game.speedMultipliers.player;
-            game.physics.maxSpeed             = game.BASE_PHYSICS.maxSpeed * game.BLOCK_SIZE * game.speedMultipliers.player;
-        
+
             game.player.width  = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.height = Math.floor(game.BLOCK_SIZE * 0.45);
             game.player.x = blockCenterX * game.BLOCK_SIZE - game.player.width / 2;
             game.player.y = blockCenterY * game.BLOCK_SIZE - game.player.height / 2;
+
+            computeVerticalCaps();
         }
         
         
@@ -1321,27 +1328,39 @@ const game = {
                 }
             }
 
-            if (game.keys['w']) {
-                player.vy -= game.playerStats.thrustPower;
-                player.fuel = Math.max(0, player.fuel - 0.07);
+            if (game.keys['w'] || game.keys['ArrowUp']) {
+                player.vy -= game.physics.thrustAccel;
             }
+            
+            // gravity (continuous acceleration)
+            player.vy += game.physics.gravityAccel;
 
-            // Physics
-            player.vy += game.physics.gravity;
-            player.vx *= game.physics.airFriction;
-            player.vy *= game.physics.airFriction;
+            const nextY   = player.y + player.vy;
+            const tileX   = Math.floor((player.x + player.width / 2) / game.BLOCK_SIZE);
+            const tileY   = Math.floor((nextY + player.height)      / game.BLOCK_SIZE);
+            const tileRow = game.terrain[tileY];
+            const tileBelow = tileRow && tileRow[tileX];
 
-            const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
-            if (speed > game.physics.maxSpeed) {
-                player.vx = (player.vx / speed) * game.physics.maxSpeed;
-                player.vy = (player.vy / speed) * game.physics.maxSpeed;
+            if (tileBelow && tileBelow.exists) {          // solid → snap on top
+                player.vy = 0;
+                player.y  = tileY * game.BLOCK_SIZE - player.height;
+            } else {
+                player.y = nextY;                         // free fall
             }
+            
+            // horizontal drag
+            player.vx *= game.physics.airFrictionX;
+            
+            // axis‑specific clamps
+            player.vx = Math.max(-game.physics.maxSpeedX,  Math.min(game.physics.maxSpeedX,  player.vx));
+            player.vy = Math.max(game.physics.maxRiseSpeed, Math.min(game.physics.maxFallSpeed, player.vy));
+            
+            // position update
+            player.x += player.vx;
+            player.y += player.vy;
 
             const oldX = player.x;
             const oldY = player.y;
-
-            player.x += player.vx;
-            player.y += player.vy;
 
             if (player.x < 0) {
                 player.x = 0;
@@ -1662,6 +1681,38 @@ function createDirtDiv() {
     return container;
 }
 
+function recomputePhysics () {
+    /* ------------------------------------------------------------
+       Scale factors
+    ------------------------------------------------------------ */
+    const pxPerBlock = game.BLOCK_SIZE;          // current zoom
+    const mult       = game.speedMultipliers.player;
+    const fps        = 60;                       // logic assumes 60 FPS
+
+    /* ------------------------------------------------------------
+       Physics (vertical + horizontal)
+    ------------------------------------------------------------ */
+    game.physics.gravityAccel = game.BASE_PHYSICS.gravityAccel * pxPerBlock * mult;
+    game.physics.thrustAccel  = game.BASE_PHYSICS.thrustAccel  * pxPerBlock * mult;
+
+    game.physics.airFrictionX = game.BASE_PHYSICS.airFrictionX; 
+    game.physics.groundFriction = game.BASE_PHYSICS.groundFriction;            // dimension‑less
+    game.physics.maxSpeedX    = game.BASE_PHYSICS.maxSpeedX    * pxPerBlock * mult;
+
+    // terminal velocities (convert “blocks / s” → “px / frame”)
+    const pxPerFrameFall = game.BASE_PHYSICS.maxFallBlocksPerSec * pxPerBlock / fps * mult;
+    const pxPerFrameRise = game.BASE_PHYSICS.maxRiseBlocksPerSec * pxPerBlock / fps * mult;
+    game.physics.maxFallSpeed =  pxPerFrameFall;   // ↓   positive
+    game.physics.maxRiseSpeed = -pxPerFrameRise;   // ↑   negative
+
+    /* ------------------------------------------------------------
+       Player stats that also scale with zoom & speed multiplier
+    ------------------------------------------------------------ */
+    game.playerStats.moveAcceleration = game.BASE_PLAYER_STATS.moveAcceleration * pxPerBlock * mult;
+    game.playerStats.drillSpeed       = game.BASE_PLAYER_STATS.drillSpeed       * pxPerBlock * mult;
+}
+
+
         
 
 
@@ -1685,9 +1736,18 @@ window.gameAPI = {
     getGameState: () => game
 };
 
+function computeVerticalCaps () {
+    const pxPerFrame = game.BLOCK_SIZE / 60;              // assume 60 fps
+    game.physics.maxFallSpeed =  game.physics.maxFallBlocksPerSec * pxPerFrame;
+    game.physics.maxRiseSpeed = -game.physics.maxRiseBlocksPerSec * pxPerFrame;
+}
+
+
 // Initialize game when DOM is ready
 function initGame() {
     // Initialize game state
+    recomputePhysics();
+    computeVerticalCaps();  
     const statsBar = createStatsBar();
     document.body.insertBefore(statsBar, document.body.firstChild);
     game.currentWorldHeight = game.BASE_WORLD_HEIGHT;
