@@ -1146,6 +1146,85 @@ const game = {
             return (block && block.exists) ? { x: blockX, y: blockY, ...block } : null;
         }
 
+        function isSolidTile(blockX, blockY) {
+            if (blockY < 0 || blockY >= game.currentWorldHeight ||
+                blockX < 0 || blockX >= game.WORLD_WIDTH) {
+                return false;
+            }
+
+            const block = game.terrain[blockY] && game.terrain[blockY][blockX];
+            return Boolean(block && block.exists);
+        }
+
+        function getOverlappingSolidTiles(x, y, width, height) {
+            const inset = 2;
+            const left = Math.floor((x + inset) / game.BLOCK_SIZE);
+            const right = Math.floor((x + width - inset - 1) / game.BLOCK_SIZE);
+            const top = Math.floor((y + inset) / game.BLOCK_SIZE);
+            const bottom = Math.floor((y + height - inset - 1) / game.BLOCK_SIZE);
+            const solidTiles = [];
+
+            for (let tileY = top; tileY <= bottom; tileY++) {
+                for (let tileX = left; tileX <= right; tileX++) {
+                    if (isSolidTile(tileX, tileY)) {
+                        solidTiles.push({ x: tileX, y: tileY });
+                    }
+                }
+            }
+
+            return solidTiles;
+        }
+
+        function hasSupportBelow(x, y, width, height) {
+            return getSupportBelow(x, y, width, height) !== null;
+        }
+
+        function getSupportBelow(x, y, width, height) {
+            const inset = 2;
+            const probeY = y + height;
+            const left = Math.floor((x + inset) / game.BLOCK_SIZE);
+            const right = Math.floor((x + width - inset - 1) / game.BLOCK_SIZE);
+            const tileY = Math.floor(probeY / game.BLOCK_SIZE);
+
+            for (let tileX = left; tileX <= right; tileX++) {
+                if (isSolidTile(tileX, tileY)) {
+                    return { x: tileX, y: tileY };
+                }
+            }
+
+            return null;
+        }
+
+        function resolveHorizontalCollisions(player) {
+            const hitTiles = getOverlappingSolidTiles(player.x, player.y, player.width, player.height);
+            if (!hitTiles.length) return;
+
+            if (player.vx > 0) {
+                const leftmostTile = Math.min(...hitTiles.map(tile => tile.x));
+                player.x = leftmostTile * game.BLOCK_SIZE - player.width;
+            } else if (player.vx < 0) {
+                const rightmostTile = Math.max(...hitTiles.map(tile => tile.x));
+                player.x = (rightmostTile + 1) * game.BLOCK_SIZE;
+            }
+
+            player.vx = 0;
+        }
+
+        function resolveVerticalCollisions(player) {
+            const hitTiles = getOverlappingSolidTiles(player.x, player.y, player.width, player.height);
+            if (!hitTiles.length) return;
+
+            if (player.vy > 0) {
+                const topmostTile = Math.min(...hitTiles.map(tile => tile.y));
+                player.y = topmostTile * game.BLOCK_SIZE - player.height;
+            } else if (player.vy < 0) {
+                const bottommostTile = Math.max(...hitTiles.map(tile => tile.y));
+                player.y = (bottommostTile + 1) * game.BLOCK_SIZE;
+            }
+
+            player.vy = 0;
+        }
+
         function removeBlock(blockX, blockY) {
             if (blockY >= 0 && blockY < game.currentWorldHeight && 
                 blockX >= 0 && blockX < game.WORLD_WIDTH) {
@@ -1190,37 +1269,49 @@ const game = {
         }
 
         function checkCollision(x, y, width, height) {
-            const corners = [
-                { x: x + 2, y: y + 2 },
-                { x: x + width - 2, y: y + 2 },
-                { x: x + 2, y: y + height - 2 },
-                { x: x + width - 2, y: y + height - 2 }
-            ];
-            
-            for (let corner of corners) {
-                if (getBlockAt(corner.x, corner.y)) {
-                    return true;
-                }
-            }
-            return false;
+            return getOverlappingSolidTiles(x, y, width, height).length > 0;
         }
 
         function getAdjacentBlock(direction) {
             const player = game.player;
-            const centerX = player.x + player.width/2;
-            const centerY = player.y + player.height/2;
-            
+            const inset = 2;
+            const left = Math.floor((player.x + inset) / game.BLOCK_SIZE);
+            const right = Math.floor((player.x + player.width - inset - 1) / game.BLOCK_SIZE);
+            const top = Math.floor((player.y + inset) / game.BLOCK_SIZE);
+            const bottom = Math.floor((player.y + player.height - inset - 1) / game.BLOCK_SIZE);
+
             let targetBlock = null;
             switch(direction) {
-                case 'down':
-                    targetBlock = getBlockAt(centerX, player.y + player.height + 1);
+                case 'down': {
+                    const tileY = Math.floor((player.y + player.height) / game.BLOCK_SIZE);
+                    for (let tileX = left; tileX <= right; tileX++) {
+                        if (isSolidTile(tileX, tileY)) {
+                            targetBlock = { x: tileX, y: tileY, ...game.terrain[tileY][tileX] };
+                            break;
+                        }
+                    }
                     break;
-                case 'left':
-                    targetBlock = getBlockAt(player.x - 1, centerY);
+                }
+                case 'left': {
+                    const tileX = Math.floor((player.x - 1) / game.BLOCK_SIZE);
+                    for (let tileY = top; tileY <= bottom; tileY++) {
+                        if (isSolidTile(tileX, tileY)) {
+                            targetBlock = { x: tileX, y: tileY, ...game.terrain[tileY][tileX] };
+                            break;
+                        }
+                    }
                     break;
-                case 'right':
-                    targetBlock = getBlockAt(player.x + player.width + 1, centerY);
+                }
+                case 'right': {
+                    const tileX = Math.floor((player.x + player.width) / game.BLOCK_SIZE);
+                    for (let tileY = top; tileY <= bottom; tileY++) {
+                        if (isSolidTile(tileX, tileY)) {
+                            targetBlock = { x: tileX, y: tileY, ...game.terrain[tileY][tileX] };
+                            break;
+                        }
+                    }
                     break;
+                }
                 default:
                     return null;
             }
@@ -1232,55 +1323,10 @@ const game = {
             return targetBlock;
         }
 
-        function applyCollisionAndUnstick(player, oldX, oldY, width, height) {
-            let collidedX = false;
-            let collidedY = false;
-        
-            if (checkCollision(player.x, oldY, width, height)) {
-                player.x = oldX;
-                player.vx = 0;
-                collidedX = true;
-            }
-        
-            if (checkCollision(oldX, player.y, width, height)) {
-                player.y = oldY;
-                player.vy = 0;
-                collidedY = true;
-            }
-        
-            // Emergency unstick if stuck on both axes
-            if ((Math.abs(player.vx) < 0.1 && Math.abs(player.vy) < 0.1) && collidedX && collidedY) {
-                if (game.keys['u'] && collidedX && collidedY) {
-                    const playerBlockX = Math.floor((player.x + player.width / 2) / game.BLOCK_SIZE);
-                    const playerBlockY = Math.floor((player.y + player.height / 2) / game.BLOCK_SIZE);
-                    const maxRadius = 4;
-
-                    for (let r = 1; r <= maxRadius; r++) {
-                        for (let dy = -r; dy <= r; dy++) {
-                            for (let dx = -r; dx <= r; dx++) {
-                                const bx = playerBlockX + dx;
-                                const by = playerBlockY + dy;
-
-                                if (
-                                    bx >= 0 && bx < game.WORLD_WIDTH &&
-                                    by >= 0 && by < game.currentWorldHeight &&
-                                    game.terrain[by][bx] && !game.terrain[by][bx].exists
-                                ) {
-                                    // Snap player to center of air block
-                                    player.x = bx * game.BLOCK_SIZE + (game.BLOCK_SIZE - player.width) / 2;
-                                    player.y = by * game.BLOCK_SIZE + (game.BLOCK_SIZE - player.height) / 2;
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                }
-            } 
-        }
-        
-
         function updatePlayer() {
             const player = game.player;
+            const startedOnGround = hasSupportBelow(player.x, player.y, player.width, player.height);
+            player.onGround = startedOnGround;
             
             // Simple drilling
             let drillTarget = null;
@@ -1289,10 +1335,10 @@ const game = {
             if (game.keys['s']) {
                 drillTarget = getAdjacentBlock('down');
                 if (drillTarget) drillDirection = 'down';
-            } else if (game.keys['a'] && game.player.onGround && getAdjacentBlock('left')) {
+            } else if (game.keys['a'] && startedOnGround && getAdjacentBlock('left')) {
                 drillTarget = getAdjacentBlock('left');
                 if (drillTarget) drillDirection = 'left';
-            } else if (game.keys['d'] && game.player.onGround && getAdjacentBlock('right')) {
+            } else if (game.keys['d'] && startedOnGround && getAdjacentBlock('right')) {
                 drillTarget = getAdjacentBlock('right');
                 if (drillTarget) drillDirection = 'right';
             }
@@ -1302,7 +1348,7 @@ const game = {
                     player.currentDrill = { x: drillTarget.x, y: drillTarget.y, progress: 0 };
                 }
                 player.currentDrill.progress += game.playerStats.drillSpeed;
-                player.drillDirection = drillDirection
+                player.drillDirection = drillDirection;
             
                 if (player.currentDrill.progress >= game.playerStats.drillTime) {
                     removeBlock(drillTarget.x, drillTarget.y);
@@ -1311,11 +1357,24 @@ const game = {
                 }
             } else {
                 player.currentDrill = null;
-                player.drillDirection = ''
-            }            
+                player.drillDirection = '';
+            }
+
+            player.drilling = Boolean(player.currentDrill);
+
+            const sideDrillingLeft = player.drilling && player.drillDirection === 'left';
+            const sideDrillingRight = player.drilling && player.drillDirection === 'right';
 
             // Movement
-            if (!player.drilling) {
+            if (sideDrillingLeft || sideDrillingRight) {
+                player.vx = 0;
+                if (game.keys['a']) {
+                    player.lastMoveDirection = 'left';
+                }
+                if (game.keys['d']) {
+                    player.lastMoveDirection = 'right';
+                }
+            } else {
                 if (game.keys['a']) {
                     player.vx -= game.playerStats.moveAcceleration;
                     player.fuel = Math.max(0, player.fuel - 0.05);
@@ -1335,32 +1394,15 @@ const game = {
             // gravity (continuous acceleration)
             player.vy += game.physics.gravityAccel;
 
-            const nextY   = player.y + player.vy;
-            const tileX   = Math.floor((player.x + player.width / 2) / game.BLOCK_SIZE);
-            const tileY   = Math.floor((nextY + player.height)      / game.BLOCK_SIZE);
-            const tileRow = game.terrain[tileY];
-            const tileBelow = tileRow && tileRow[tileX];
-
-            if (tileBelow && tileBelow.exists) {          // solid → snap on top
-                player.vy = 0;
-                player.y  = tileY * game.BLOCK_SIZE - player.height;
-            } else {
-                player.y = nextY;                         // free fall
-            }
-            
             // horizontal drag
             player.vx *= game.physics.airFrictionX;
             
             // axis‑specific clamps
             player.vx = Math.max(-game.physics.maxSpeedX,  Math.min(game.physics.maxSpeedX,  player.vx));
             player.vy = Math.max(game.physics.maxRiseSpeed, Math.min(game.physics.maxFallSpeed, player.vy));
-            
-            // position update
-            player.x += player.vx;
-            player.y += player.vy;
 
-            const oldX = player.x;
-            const oldY = player.y;
+            player.x += player.vx;
+            resolveHorizontalCollisions(player);
 
             if (player.x < 0) {
                 player.x = 0;
@@ -1371,18 +1413,29 @@ const game = {
                 player.vx = 0;
             }
 
-            applyCollisionAndUnstick(player, oldX, oldY, player.width, player.height);
+            const supportBelow = getSupportBelow(player.x, player.y, player.width, player.height);
+            if (supportBelow && player.vy >= 0) {
+                player.y = supportBelow.y * game.BLOCK_SIZE - player.height;
+                player.vy = 0;
+            } else {
+                player.y += player.vy;
+                resolveVerticalCollisions(player);
 
+                if (player.y < 0) {
+                    player.y = 0;
+                    if (player.vy < 0) {
+                        player.vy = 0;
+                    }
+                }
+            }
 
-            if (getAdjacentBlock('down')) {
-                player.onGround = true;
+            player.onGround = hasSupportBelow(player.x, player.y, player.width, player.height);
+
+            if (player.onGround) {
                 if (player.vy > 0) {
                     player.vy = 0;
                 }
                 player.vx *= game.physics.groundFriction;
-
-            } else {
-                player.onGround = false;
             }
 
             // Update camera to follow player
